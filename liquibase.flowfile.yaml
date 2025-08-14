@@ -1,14 +1,18 @@
-# Runs: policies (checks) → simple snapshot → update → diff (dev → test)
-# Expects env vars: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
-# Optional: CHANGELOG_FILE (defaults to changelog/master.xml)
+# Expects env: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
+# Toggles: RUN_POLICIES=on|off, RUN_SNAPSHOT=on|off
+# Optional: CHANGELOG_FILE (defaults below)
 
 globalVariables:
   CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
+  RUN_POLICIES:   "${RUN_POLICIES:-on}"
+  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"
 
 stages:
   Default:
     actions:
+      # policies (checks) — only if RUN_POLICIES == on
       - type: liquibase
+        if: "RUN_POLICIES == 'on'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
@@ -16,13 +20,16 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # snapshot (basic) — only if RUN_SNAPSHOT == on
       - type: liquibase
+        if: "RUN_SNAPSHOT == 'on'"
         command: snapshot
         cmdArgs:
           url: "${LB_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # update (always runs)
       - type: liquibase
         command: update
         cmdArgs:
@@ -31,6 +38,7 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # diff dev -> test (always runs)
       - type: liquibase
         command: diff
         cmdArgs:
