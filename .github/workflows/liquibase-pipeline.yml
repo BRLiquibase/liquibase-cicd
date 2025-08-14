@@ -1,4 +1,4 @@
-name: Liquibase Pipeline (Secrets)
+name: Liquibase Pipeline (Auto-install Latest)
 
 on:
   workflow_dispatch:
@@ -33,26 +33,66 @@ jobs:
   deploy:
     runs-on: self-hosted
 
-    # If target=all -> ["dev","test","prod"], else just the selected env
     strategy:
       matrix:
         env: ${{ fromJson( github.event.inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', github.event.inputs.target) ) }}
 
     env:
-      # Inject Pro license & (fallback) user/pass from repo secrets
-      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
+      # Hardcoded local DBs (adjust when you move to remote DBs)
+      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
+      TEST_URL: jdbc:postgresql://localhost:5434/postgres
+      PROD_URL: jdbc:postgresql://localhost:5435/postgres
+
+      # Repo secrets you already created
       LB_USER: ${{ secrets.LB_USER }}
       LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
+      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Liquibase (latest Pro)
-        uses: liquibase/setup-liquibase@v1
-        with:
-          version: 'latest'
-          edition: 'pro'
+      - name: Install latest Liquibase (no sudo)
+        id: install_lb
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Ensure tools are present
+          if ! command -v unzip >/dev/null 2>&1; then
+            echo "unzip missing; please install unzip on the self-hosted runner." >&2
+            exit 1
+          fi
+          if ! command -v curl >/dev/null 2>&1; then
+            echo "curl missing; please install curl on the self-hosted runner." >&2
+            exit 1
+          fi
+
+          # Get latest version tag from GitHub API (unauthenticated)
+          VERSION="$(curl -fsSL https://api.github.com/repos/liquibase/liquibase/releases/latest \
+            | grep -m1 '"tag_name"' | cut -d '"' -f4 | sed 's/^v//')"
+
+          if [ -z "$VERSION" ]; then
+            echo "Could not determine latest Liquibase version." >&2
+            exit 1
+          fi
+
+          echo "Latest Liquibase version: $VERSION"
+
+          # Download & install into $HOME without sudo
+          mkdir -p "$HOME/liquibase-$VERSION" "$HOME/.local/bin"
+          cd "$HOME"
+          curl -fsSL -o "liquibase-$VERSION.zip" \
+            "https://github.com/liquibase/liquibase/releases/download/v${VERSION}/liquibase-${VERSION}.zip"
+
+          unzip -qo "liquibase-$VERSION.zip" -d "liquibase-$VERSION"
+          ln -sf "$HOME/liquibase-$VERSION/liquibase" "$HOME/.local/bin/liquibase"
+
+          # Put ~/.local/bin on PATH for subsequent steps
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          # Show version to logs
+          "$HOME/.local/bin/liquibase" --version
 
       - name: Create defaults file with Pro license
         id: defaults
@@ -68,50 +108,25 @@ jobs:
 
           echo "defaultsFile=$(pwd)/liq-defaults.properties" >> $GITHUB_OUTPUT
 
-      - name: Map environment → URL, creds, contexts
+      - name: Map environment to URL & contexts
         id: envmap
-        shell: bash
         run: |
-          # Pull host/port/user/pass per env from GitHub Secrets
           case "${{ matrix.env }}" in
             dev)
-              HOST="${{ secrets.DEV_DB_HOST }}"
-              PORT="${{ secrets.DEV_DB_PORT }}"
-              USER="${{ secrets.DEV_DB_USER || env.LB_USER }}"
-              PASS="${{ secrets.DEV_DB_PASS || env.LB_PASSWORD }}"
-              # Include 'dev' + the "all three" context (dev,test,prod)
+              URL="${{ env.DEV_URL }}"
               CONTEXTS="dev,dev,test,prod"
               ;;
             test)
-              HOST="${{ secrets.TEST_DB_HOST }}"
-              PORT="${{ secrets.TEST_DB_PORT }}"
-              USER="${{ secrets.TEST_DB_USER || env.LB_USER }}"
-              PASS="${{ secrets.TEST_DB_PASS || env.LB_PASSWORD }}"
+              URL="${{ env.TEST_URL }}"
               CONTEXTS="test,dev,test,prod"
               ;;
             prod)
-              HOST="${{ secrets.PROD_DB_HOST }}"
-              PORT="${{ secrets.PROD_DB_PORT }}"
-              USER="${{ secrets.PROD_DB_USER || env.LB_USER }}"
-              PASS="${{ secrets.PROD_DB_PASS || env.LB_PASSWORD }}"
+              URL="${{ env.PROD_URL }}"
               CONTEXTS="prod,dev,test,prod"
               ;;
           esac
-
-          if [ -z "$HOST" ] || [ -z "$PORT" ]; then
-            echo "Host/port secrets are missing for ${{ matrix.env }}. Please set them in repo settings." >&2
-            exit 1
-          fi
-
-          URL="jdbc:postgresql://${HOST}:${PORT}/postgres"
-
-          echo "url=$URL"        >> "$GITHUB_OUTPUT"
-          echo "username=$USER"  >> "$GITHUB_OUTPUT"
-          echo "password=$PASS"  >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "contexts=$CONTEXTS" >> "$GITHUB_OUTPUT"
-
-      - name: Show Liquibase version
-        run: liquibase --version
 
       - name: (Optional) Run checks/policies
         if: ${{ github.event.inputs.policies == 'on' }}
@@ -119,8 +134,8 @@ jobs:
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ steps.envmap.outputs.username }}" \
-            --password="${{ steps.envmap.outputs.password }}" \
+            --username="${{ env.LB_USER }}" \
+            --password="${{ env.LB_PASSWORD }}" \
             checks run || true
 
       - name: Update ${{ matrix.env }}
@@ -128,20 +143,20 @@ jobs:
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ steps.envmap.outputs.username }}" \
-            --password="${{ steps.envmap.outputs.password }}" \
+            --username="${{ env.LB_USER }}" \
+            --password="${{ env.LB_PASSWORD }}" \
             --contexts="${{ steps.envmap.outputs.contexts }}" \
             update
 
       - name: (Optional) Drift detection vs. dev
         if: ${{ github.event.inputs.drift == 'on' }}
         run: |
-          # Point reference at dev database for the diff
-          REF="jdbc:postgresql://${{ secrets.DEV_DB_HOST }}:${{ secrets.DEV_DB_PORT }}/postgres"
+          # Compare current env to dev DB as baseline
+          REF="${{ env.DEV_URL }}"
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ steps.envmap.outputs.username }}" \
-            --password="${{ steps.envmap.outputs.password }}" \
+            --username="${{ env.LB_USER }}" \
+            --password="${{ env.LB_PASSWORD }}" \
             --referenceUrl="$REF" \
             diff || true
