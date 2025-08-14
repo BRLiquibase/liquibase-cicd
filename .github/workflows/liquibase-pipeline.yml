@@ -1,4 +1,4 @@
-name: Liquibase Simple Update
+name: Liquibase Simple Update (Local LB)
 
 on:
   workflow_dispatch:
@@ -24,28 +24,32 @@ jobs:
     runs-on: self-hosted
 
     env:
-      # Local containers (adjust if/when you move off-host)
+      # Local containers
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
 
-      # Secrets you should set in GitHub (Settings → Secrets and variables → Actions)
-      LB_USER: ${{ secrets.LB_USER }}
-      LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
-      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
+      # Secrets (set in repo → Settings → Secrets and variables → Actions)
+      LB_USER: ${{ secrets.LB_USER || 'postgres' }}
+      LB_PASSWORD: ${{ secrets.LB_PASSWORD || 'secret' }}
+      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE || '' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Use the action with the keys you confirmed work: version + edition
-      - name: Install Liquibase (latest Pro)
-        uses: liquibase/setup-liquibase@v1
-        with:
-          version: 'latest'
-          edition: 'pro'
+      - name: Verify Liquibase on PATH
+        shell: bash
+        run: |
+          set -e
+          if ! command -v liquibase >/dev/null 2>&1; then
+            echo "Liquibase is not on PATH for the self-hosted runner user." >&2
+            echo "Add it to PATH or symlink it, e.g.: sudo ln -s /opt/liquibase/liquibase /usr/local/bin/liquibase" >&2
+            exit 1
+          fi
+          liquibase --version
 
-      - name: Write defaults (inject license)
+      - name: Write defaults (inject license if present)
         id: defaults
         run: |
           cat > liq-defaults.properties <<'PROPS'
