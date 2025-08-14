@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Environment to deploy"
+        description: "Environment"
         required: true
         type: choice
         options: [dev, test, prod]
@@ -30,7 +30,7 @@ jobs:
       - name: Verify Liquibase on PATH
         shell: bash
         run: |
-          command -v liquibase >/dev/null || { echo "Liquibase not on PATH for runner user"; exit 1; }
+          command -v liquibase >/dev/null || { echo "Liquibase not on PATH"; exit 1; }
           liquibase --version
 
       - name: Write defaults (inject Pro license if present)
@@ -46,16 +46,54 @@ jobs:
           fi
           echo "file=$(pwd)/liq-defaults.properties" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve env-specific vars for Flow
+        id: resolve
+        shell: bash
+        env:
+          TARGET:   ${{ github.event.inputs.target }}
+          RUN_ID:   ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          case "$TARGET" in
+            dev)  DB_URL="jdbc:postgresql://localhost:5433/postgres"; CONTEXTS="dev"  ;;
+            test) DB_URL="jdbc:postgresql://localhost:5434/postgres"; CONTEXTS="test" ;;
+            prod) DB_URL="jdbc:postgresql://localhost:5435/postgres"; CONTEXTS="prod" ;;
+          esac
+          SNAPSHOT="snapshot-${TARGET}-${RUN_ID}.json"
+          DIFF="diff-${TARGET}-${RUN_ID}.txt"
+
+          {
+            echo "DB_URL=$DB_URL"
+            echo "CONTEXTS=$CONTEXTS"
+            echo "SNAPSHOT=$SNAPSHOT"
+            echo "DIFF=$DIFF"
+            echo "TARGET=$TARGET"
+            echo "RUN_ID=$RUN_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: (Optional) Pro policy checks
+        if: ${{ github.event.inputs.policies == 'on' }}
+        shell: bash
+        env:
+          DB_URL:   ${{ env.DB_URL }}
+          LB_USER:  ${{ secrets.LB_USER }}
+          LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
+        run: |
+          liquibase \
+            --defaultsFile="${{ steps.defaults.outputs.file }}" \
+            --url="$DB_URL" \
+            --username="$LB_USER" \
+            --password="$LB_PASSWORD" \
+            checks run || true
+
       - name: Run Flow (snapshot → update → diff)
         shell: bash
         env:
-          # Flow variables as ENV (replaces -D flags)
-          TARGET:   ${{ github.event.inputs.target }}          # dev|test|prod
-          POLICIES: ${{ github.event.inputs.policies }}        # on|off
-          RUN_ID:   ${{ github.run_id }}-${{ github.run_attempt }}
-
-          # DB creds (from repo secrets)
-          LB_USER: ${{ secrets.LB_USER }}
+          # flow variables
+          DB_URL:   ${{ env.DB_URL }}
+          CONTEXTS: ${{ env.CONTEXTS }}
+          SNAPSHOT: ${{ env.SNAPSHOT }}
+          DIFF:     ${{ env.DIFF }}
+          LB_USER:  ${{ secrets.LB_USER }}
           LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
         run: |
           liquibase \
@@ -66,8 +104,8 @@ jobs:
       - name: Upload snapshot & diff artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: liquibase-artifacts-${{ github.event.inputs.target }}
+          name: liquibase-artifacts-${{ env.TARGET }}
           path: |
-            snapshot-${{ github.event.inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}.json
-            diff-${{ github.event.inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}.txt
-          if-no-files-found: warn
+            ${{ env.SNAPSHOT }}
+            ${{ env.DIFF }}
+          if-no-files-found: error
