@@ -33,24 +33,22 @@ jobs:
   deploy:
     runs-on: self-hosted
 
+    # If target=all -> ["dev","test","prod"], else just the selected env
     strategy:
       matrix:
         env: ${{ fromJson( github.event.inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', github.event.inputs.target) ) }}
 
     env:
-      CHANGELOG: changelog/master.xml
-      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
-      TEST_URL: jdbc:postgresql://localhost:5434/postgres
-      PROD_URL: jdbc:postgresql://localhost:5435/postgres
+      # Inject Pro license & (fallback) user/pass from repo secrets
+      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
       LB_USER: ${{ secrets.LB_USER }}
       LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
-      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Liquibase (latest)
+      - name: Install Liquibase (latest Pro)
         uses: liquibase/setup-liquibase@v1
         with:
           version: 'latest'
@@ -70,25 +68,50 @@ jobs:
 
           echo "defaultsFile=$(pwd)/liq-defaults.properties" >> $GITHUB_OUTPUT
 
-      - name: Map environment to URL & contexts
+      - name: Map environment → URL, creds, contexts
         id: envmap
+        shell: bash
         run: |
+          # Pull host/port/user/pass per env from GitHub Secrets
           case "${{ matrix.env }}" in
             dev)
-              URL="${{ env.DEV_URL }}"
+              HOST="${{ secrets.DEV_DB_HOST }}"
+              PORT="${{ secrets.DEV_DB_PORT }}"
+              USER="${{ secrets.DEV_DB_USER || env.LB_USER }}"
+              PASS="${{ secrets.DEV_DB_PASS || env.LB_PASSWORD }}"
+              # Include 'dev' + the "all three" context (dev,test,prod)
               CONTEXTS="dev,dev,test,prod"
               ;;
             test)
-              URL="${{ env.TEST_URL }}"
+              HOST="${{ secrets.TEST_DB_HOST }}"
+              PORT="${{ secrets.TEST_DB_PORT }}"
+              USER="${{ secrets.TEST_DB_USER || env.LB_USER }}"
+              PASS="${{ secrets.TEST_DB_PASS || env.LB_PASSWORD }}"
               CONTEXTS="test,dev,test,prod"
               ;;
             prod)
-              URL="${{ env.PROD_URL }}"
+              HOST="${{ secrets.PROD_DB_HOST }}"
+              PORT="${{ secrets.PROD_DB_PORT }}"
+              USER="${{ secrets.PROD_DB_USER || env.LB_USER }}"
+              PASS="${{ secrets.PROD_DB_PASS || env.LB_PASSWORD }}"
               CONTEXTS="prod,dev,test,prod"
               ;;
           esac
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$HOST" ] || [ -z "$PORT" ]; then
+            echo "Host/port secrets are missing for ${{ matrix.env }}. Please set them in repo settings." >&2
+            exit 1
+          fi
+
+          URL="jdbc:postgresql://${HOST}:${PORT}/postgres"
+
+          echo "url=$URL"        >> "$GITHUB_OUTPUT"
+          echo "username=$USER"  >> "$GITHUB_OUTPUT"
+          echo "password=$PASS"  >> "$GITHUB_OUTPUT"
           echo "contexts=$CONTEXTS" >> "$GITHUB_OUTPUT"
+
+      - name: Show Liquibase version
+        run: liquibase --version
 
       - name: (Optional) Run checks/policies
         if: ${{ github.event.inputs.policies == 'on' }}
@@ -96,8 +119,8 @@ jobs:
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ env.LB_USER }}" \
-            --password="${{ env.LB_PASSWORD }}" \
+            --username="${{ steps.envmap.outputs.username }}" \
+            --password="${{ steps.envmap.outputs.password }}" \
             checks run || true
 
       - name: Update ${{ matrix.env }}
@@ -105,23 +128,20 @@ jobs:
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ env.LB_USER }}" \
-            --password="${{ env.LB_PASSWORD }}" \
+            --username="${{ steps.envmap.outputs.username }}" \
+            --password="${{ steps.envmap.outputs.password }}" \
             --contexts="${{ steps.envmap.outputs.contexts }}" \
             update
 
       - name: (Optional) Drift detection vs. dev
         if: ${{ github.event.inputs.drift == 'on' }}
         run: |
-          case "${{ matrix.env }}" in
-            dev)  REF="${{ env.DEV_URL }}" ;;
-            test) REF="${{ env.DEV_URL }}" ;;
-            prod) REF="${{ env.DEV_URL }}" ;;
-          esac
+          # Point reference at dev database for the diff
+          REF="jdbc:postgresql://${{ secrets.DEV_DB_HOST }}:${{ secrets.DEV_DB_PORT }}/postgres"
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ env.LB_USER }}" \
-            --password="${{ env.LB_PASSWORD }}" \
+            --username="${{ steps.envmap.outputs.username }}" \
+            --password="${{ steps.envmap.outputs.password }}" \
             --referenceUrl="$REF" \
             diff || true
