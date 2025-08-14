@@ -54,7 +54,7 @@ stages:
       - type: liquibase
         if: "${POLICIES} == 'on'"
         command: checks run
-        # cmdArgs: {checks-scope: "changelog,database"}  # uncomment to scope checks
+         cmdArgs: {checks-scope: "changelog"} 
 
       # --------- Update (per env with contexts) ----------
       - type: liquibase
