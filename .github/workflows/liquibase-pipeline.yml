@@ -9,9 +9,20 @@ on:
         type: choice
         options: [dev, test, prod]
         default: dev
+      policies:
+        description: 'Run policies (checks run)?'
+        required: true
+        type: choice
+        options: [on, off]
+        default: on
+      snapshot:
+        description: 'Run snapshot (basic)?'
+        required: true
+        type: choice
+        options: [on, off]
+        default: on
 
 jobs:
-  # 1) Run policies (do not fail the job; record pass/fail)
   policies:
     runs-on: self-hosted
     outputs:
@@ -40,13 +51,18 @@ jobs:
           esac
           echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Run policy checks (record pass/fail)
+      - name: Run policy checks (optional; records pass/fail)
         id: check
         shell: bash
         env:
           LB_URL: ${{ steps.pick.outputs.LB_URL }}
         run: |
           set +e
+          if [ "${{ inputs.policies }}" != "on" ]; then
+            echo "POLICY_OK=true"  >> "$GITHUB_OUTPUT"
+            echo "ℹ️ Policies disabled by input."
+            exit 0
+          fi
           liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
             checks run \
             --changelog-file="${CHANGELOG_FILE}" \
@@ -57,22 +73,20 @@ jobs:
             echo "✅ Policies passed."
           else
             echo "POLICY_OK=false" >> "$GITHUB_OUTPUT"
-            echo "⚠️ Policies failed; approval required to continue."
+            echo "⚠️ Policies failed; approval will be required to continue."
           fi
           exit 0
 
-  # 2) Manual approval gate — only when policies failed
   approval:
     needs: policies
     if: ${{ needs.policies.outputs.policy_ok == 'false' }}
     runs-on: self-hosted
     environment:
-      name: 'policy-override'   # create this in Settings → Environments
+      name: 'policy-override'   # create this Environment with required reviewers
     steps:
       - name: Awaiting manual approval
         run: echo "Policies failed; waiting for approval to proceed."
 
-  # 3) Deploy flow (checks are skipped here because we already handled them)
   deploy:
     needs: [policies, approval]
     if: ${{ needs.policies.outputs.policy_ok == 'true' || needs.approval.result == 'success' }}
@@ -82,7 +96,7 @@ jobs:
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       LB_USER:  postgres
       LB_PWD:   secret
-      RUN_POLICIES: off   # tell the flow to skip checks now
+      RUN_POLICIES: off               # we already handled checks above
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,14 +104,13 @@ jobs:
       - name: Run flow (snapshot → update → diff dev→test)
         shell: bash
         env:
-          LB_URL:  ${{ needs.policies.outputs.lb_url }}
-          LB_USER: ${{ env.LB_USER }}
-          LB_PWD:  ${{ env.LB_PWD }}
-          DEV_URL: ${{ env.DEV_URL }}
-          TEST_URL: ${{ env.TEST_URL }}
-          RUN_POLICIES: ${{ env.RUN_POLICIES }}
+          LB_URL:        ${{ needs.policies.outputs.lb_url }}
+          LB_USER:       ${{ env.LB_USER }}
+          LB_PWD:        ${{ env.LB_PWD }}
+          DEV_URL:       ${{ env.DEV_URL }}
+          TEST_URL:      ${{ env.TEST_URL }}
+          RUN_POLICIES:  ${{ env.RUN_POLICIES }}
+          RUN_SNAPSHOT:  ${{ inputs.snapshot }}   # on/off from dispatch UI
         run: |
           set -euo pipefail
           liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow
-          # If your file name is custom, use:
-          # liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow --flow-file=liquibase.flowfile.yaml

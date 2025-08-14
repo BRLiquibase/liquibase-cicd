@@ -5,11 +5,11 @@
 globalVariables:
   CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
   RUN_POLICIES:   "${RUN_POLICIES:-on}"   # 'on' or 'off'
+  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # 'on' or 'off'
 
 stages:
   Default:
     actions:
-      # Policies (checks) — only if RUN_POLICIES == 'on'
       - type: liquibase
         if: "RUN_POLICIES == 'on'"
         command: checks run
@@ -19,15 +19,14 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
-      # Simple snapshot (always runs)
       - type: liquibase
+        if: "RUN_SNAPSHOT == 'on'"
         command: snapshot
         cmdArgs:
           url: "${LB_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
-      # Update (always runs)
       - type: liquibase
         command: update
         cmdArgs:
@@ -36,7 +35,6 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
-      # Diff dev -> test (always runs)
       - type: liquibase
         command: diff
         cmdArgs:
