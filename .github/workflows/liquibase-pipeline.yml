@@ -42,7 +42,7 @@ jobs:
           liquibase.hub.mode=off
           PROPS
           if [ -n "${{ secrets.LIQUIBASE_PRO_LICENSE }}" ]; then
-            echo "liquibase.pro.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
+            echo "liquibase.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
           fi
           echo "file=$(pwd)/liq-defaults.properties" >> "$GITHUB_OUTPUT"
 
@@ -50,17 +50,16 @@ jobs:
         id: resolve
         shell: bash
         env:
-          TARGET:   ${{ github.event.inputs.target }}
-          RUN_ID:   ${{ github.run_id }}-${{ github.run_attempt }}
+          TARGET: ${{ github.event.inputs.target }}
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           case "$TARGET" in
             dev)  DB_URL="jdbc:postgresql://localhost:5433/postgres"; CONTEXTS="dev"  ;;
             test) DB_URL="jdbc:postgresql://localhost:5434/postgres"; CONTEXTS="test" ;;
             prod) DB_URL="jdbc:postgresql://localhost:5435/postgres"; CONTEXTS="prod" ;;
           esac
-          SNAPSHOT="snapshot-${TARGET}-${RUN_ID}.json"
-          DIFF="diff-${TARGET}-${RUN_ID}.txt"
-
+          SNAPSHOT="${GITHUB_WORKSPACE}/snapshot-${TARGET}-${RUN_ID}.json"
+          DIFF="${GITHUB_WORKSPACE}/diff-${TARGET}-${RUN_ID}.txt"
           {
             echo "DB_URL=$DB_URL"
             echo "CONTEXTS=$CONTEXTS"
@@ -88,11 +87,12 @@ jobs:
       - name: Run Flow (snapshot → update → diff)
         shell: bash
         env:
-          # flow variables
+          # Flow inputs
           DB_URL:   ${{ env.DB_URL }}
           CONTEXTS: ${{ env.CONTEXTS }}
           SNAPSHOT: ${{ env.SNAPSHOT }}
           DIFF:     ${{ env.DIFF }}
+          # DB auth
           LB_USER:  ${{ secrets.LB_USER }}
           LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
         run: |

@@ -1,6 +1,5 @@
 # Flow: snapshot → update → diff (reference = pre-snapshot via offline URL)
-# Env vars provided by the workflow/local shell:
-#   DB_URL, CONTEXTS, SNAPSHOT, DIFF, LB_USER, LB_PASSWORD
+# Values come from env: DB_URL, CONTEXTS, SNAPSHOT, DIFF, LB_USER, LB_PASSWORD
 
 stages:
   deploy:
@@ -11,13 +10,13 @@ stages:
           url: "${DB_URL}"
           username: "${LB_USER}"
           password: "${LB_PASSWORD}"
-          snapshot-format: "JSON"
-          output-file: "${SNAPSHOT}"
+          snapshotFormat: "JSON"
+          outputFile: "${SNAPSHOT}"
 
       - type: liquibase
         command: update
         cmdArgs:
-          changelog-file: "changelog/master.xml"
+          changelogFile: "changelog/master.xml"
           url: "${DB_URL}"
           username: "${LB_USER}"
           password: "${LB_PASSWORD}"
@@ -26,7 +25,7 @@ stages:
       - type: liquibase
         command: diff
         cmdArgs:
-          # Compare live DB (url) to the pre-run snapshot (reference-url via offline snapshot)
+          # Compare live DB to the pre-run snapshot via the offline snapshot driver
           url: "${DB_URL}"
-          reference-url: "offline:snapshot?snapshot=${SNAPSHOT}"
-          output-file: "${DIFF}"
+          referenceUrl: "offline:snapshot?snapshot=${SNAPSHOT}"
+          outputFile: "${DIFF}"
