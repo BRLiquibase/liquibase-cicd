@@ -73,4 +73,7 @@ jobs:
           DEV_URL: ${{ env.DEV_URL }}
           TEST_URL: ${{ env.TEST_URL }}
         run: |
-          liquibase flow ${{ steps.envmap.outputs.FLOW }}
+          liquibase flow
+          # or if you kept a custom filename:
+          # liquibase flow --flow-file=.flowfile.yaml
+

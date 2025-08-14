@@ -1,114 +1,44 @@
-flows:
-  # policies → snapshot → update → diff(dev→test)
-  policies-snapshot-update-diff:
-    env:
-      CHANGELOG: changelog/master.xml
-    steps:
-      - liquibase:
-          command: checks run
-          args:
-            changeLogFile: ${CHANGELOG}
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: snapshot
-          args:
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: update
-          args:
-            changeLogFile: ${CHANGELOG}
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: diff
-          args:
-            referenceUrl: ${DEV_URL}
-            referenceUsername: ${LB_USER}
-            referencePassword: ${LB_PWD}
-            url: ${TEST_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
+# Runs: checks → snapshot → update → diff(dev→test)
+# Expects these env vars at runtime: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
+# Optional: CHANGELOG_FILE (defaults to changelog/master.xml), CONTEXTS (omit by default)
 
-  # policies → update → diff (no snapshot)
-  policies-update-diff:
-    env:
-      CHANGELOG: changelog/master.xml
-    steps:
-      - liquibase:
-          command: checks run
-          args:
-            changeLogFile: ${CHANGELOG}
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: update
-          args:
-            changeLogFile: ${CHANGELOG}
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: diff
-          args:
-            referenceUrl: ${DEV_URL}
-            referenceUsername: ${LB_USER}
-            referencePassword: ${LB_PWD}
-            url: ${TEST_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
+globalVariables:
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
+  CONTEXTS: "${CONTEXTS:-null}"  # null means Liquibase omits the arg automatically
 
-  # snapshot → update → diff (no policies)
-  snapshot-update-diff:
-    env:
-      CHANGELOG: changelog/master.xml
-    steps:
-      - liquibase:
-          command: snapshot
-          args:
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: update
-          args:
-            changeLogFile: ${CHANGELOG}
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: diff
-          args:
-            referenceUrl: ${DEV_URL}
-            referenceUsername: ${LB_USER}
-            referencePassword: ${LB_PWD}
-            url: ${TEST_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
+stages:
+  Default:
+    actions:
+      - type: liquibase
+        command: checks run
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url: "${LB_URL}"
+          username: "${LB_USER}"
+          password: "${LB_PWD}"
 
-  # update → diff (no policies, no snapshot)
-  update-diff:
-    env:
-      CHANGELOG: changelog/master.xml
-    steps:
-      - liquibase:
-          command: update
-          args:
-            changeLogFile: ${CHANGELOG}
-            url: ${LB_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
-      - liquibase:
-          command: diff
-          args:
-            referenceUrl: ${DEV_URL}
-            referenceUsername: ${LB_USER}
-            referencePassword: ${LB_PWD}
-            url: ${TEST_URL}
-            username: ${LB_USER}
-            password: ${LB_PWD}
+      - type: liquibase
+        command: snapshot
+        cmdArgs:
+          url: "${LB_URL}"
+          username: "${LB_USER}"
+          password: "${LB_PWD}"
+
+      - type: liquibase
+        command: update
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url: "${LB_URL}"
+          username: "${LB_USER}"
+          password: "${LB_PWD}"
+          contexts: "${CONTEXTS}"
+
+      - type: liquibase
+        command: diff
+        cmdArgs:
+          reference-url: "${DEV_URL}"
+          reference-username: "${LB_USER}"
+          reference-password: "${LB_PWD}"
+          url: "${TEST_URL}"
+          username: "${LB_USER}"
+          password: "${LB_PWD}"
