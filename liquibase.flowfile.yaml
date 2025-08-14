@@ -1,5 +1,6 @@
-# Minimal Flow: snapshot → update → diff.
-# Values are injected via env: DB_URL, CONTEXTS, SNAPSHOT, DIFF, LB_USER, LB_PASSWORD.
+# Flow: snapshot → update → diff (reference = pre-snapshot via offline URL)
+# Env vars provided by the workflow/local shell:
+#   DB_URL, CONTEXTS, SNAPSHOT, DIFF, LB_USER, LB_PASSWORD
 
 stages:
   deploy:
@@ -25,8 +26,7 @@ stages:
       - type: liquibase
         command: diff
         cmdArgs:
-          reference-snapshot: "${SNAPSHOT}"
+          # Compare live DB (url) to the pre-run snapshot (reference-url via offline snapshot)
           url: "${DB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PASSWORD}"
+          reference-url: "offline:snapshot?snapshot=${SNAPSHOT}"
           output-file: "${DIFF}"
