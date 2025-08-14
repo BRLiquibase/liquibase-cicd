@@ -1,0 +1,152 @@
+name: Liquibase Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Environment to deploy"
+        required: true
+        type: choice
+        options: [dev, test, prod, all]
+        default: dev
+      policies:
+        description: "Run Liquibase checks/policies?"
+        required: true
+        type: choice
+        options: [off, on]
+        default: off
+      drift:
+        description: "Run drift detection (diff) after deploy?"
+        required: true
+        type: choice
+        options: [off, on]
+        default: off
+
+permissions:
+  contents: read
+
+concurrency:
+  group: liquibase-${{ github.ref }}-${{ github.event.inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Run only for the requested env (or all)
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == matrix.env }}
+    runs-on: self-hosted   # your script already starts a self-hosted runner
+    strategy:
+      matrix:
+        env: [dev, test, prod]
+
+    env:
+      # Changelog & static URLs for your three local DBs
+      CHANGELOG: changelog/master.xml
+      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
+      TEST_URL: jdbc:postgresql://localhost:5434/postgres
+      PROD_URL: jdbc:postgresql://localhost:5435/postgres
+
+      # Optional Vault (matches your setup script)
+      VAULT_ADDR: http://localhost:8200
+      VAULT_TOKEN: vault-plaintext-root-token
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Liquibase
+        uses: liquibase/setup-liquibase@v1
+        with:
+          liquibase-version: 4.29.2
+
+      - name: Resolve DB credentials (Vault → GitHub Secrets → defaults)
+        id: creds
+        shell: bash
+        env:
+          LB_USER_SECRET: ${{ secrets.LB_USER }}
+          LB_PWD_SECRET:  ${{ secrets.LB_PASSWORD }}
+        run: |
+          set -e
+          USERNAME=""
+          PASSWORD=""
+
+          # 1) Try Vault (optional)
+          if command -v curl >/dev/null 2>&1 && curl -sf "$VAULT_ADDR/v1/secret/data/liquibase/credentials" -H "X-Vault-Token: $VAULT_TOKEN" -o /tmp/creds.json; then
+            # Use jq if present; else do a simple grep/sed fallback
+            if command -v jq >/dev/null 2>&1; then
+              USERNAME=$(jq -r '.data.data.username' /tmp/creds.json)
+              PASSWORD=$(jq -r '.data.data.password' /tmp/creds.json)
+            else
+              USERNAME=$(grep -o '"username"[^,]*' /tmp/creds.json | sed 's/.*"username":"\([^"]*\)".*/\1/')
+              PASSWORD=$(grep -o '"password"[^,]*' /tmp/creds.json | sed 's/.*"password":"\([^"]*\)".*/\1/')
+            fi
+          fi
+
+          # 2) Fall back to GitHub Secrets if provided
+          if [ -z "$USERNAME" ] && [ -n "$LB_USER_SECRET" ]; then USERNAME="$LB_USER_SECRET"; fi
+          if [ -z "$PASSWORD" ] && [ -n "$LB_PWD_SECRET" ]; then PASSWORD="$LB_PWD_SECRET"; fi
+
+          # 3) Final fallback to defaults (match your containers)
+          if [ -z "$USERNAME" ]; then USERNAME="postgres"; fi
+          if [ -z "$PASSWORD" ]; then PASSWORD="secret"; fi
+
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+
+      - name: Map environment to URL & contexts
+        id: envmap
+        shell: bash
+        run: |
+          case "${{ matrix.env }}" in
+            dev)
+              URL="${{ env.DEV_URL }}"
+              # Include 'dev' + the "all three" context (dev,test,prod)
+              CONTEXTS="dev,dev,test,prod"
+              ;;
+            test)
+              URL="${{ env.TEST_URL }}"
+              CONTEXTS="test,dev,test,prod"
+              ;;
+            prod)
+              URL="${{ env.PROD_URL }}"
+              CONTEXTS="prod,dev,test,prod"
+              ;;
+          esac
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "contexts=$CONTEXTS" >> "$GITHUB_OUTPUT"
+
+      - name: (Optional) Run checks/policies
+        if: ${{ github.event.inputs.policies == 'on' }}
+        run: |
+          liquibase \
+            --url="${{ steps.envmap.outputs.url }}" \
+            --username="${{ steps.creds.outputs.username }}" \
+            --password="${{ steps.creds.outputs.password }}" \
+            --changeLogFile="${{ env.CHANGELOG }}" \
+            checks run || true
+
+      - name: Update ${{ matrix.env }}
+        run: |
+          liquibase \
+            --url="${{ steps.envmap.outputs.url }}" \
+            --username="${{ steps.creds.outputs.username }}" \
+            --password="${{ steps.creds.outputs.password }}" \
+            --changeLogFile="${{ env.CHANGELOG }}" \
+            --contexts="${{ steps.envmap.outputs.contexts }}" \
+            update
+
+      - name: (Optional) Drift detection vs. dev
+        if: ${{ github.event.inputs.drift == 'on' }}
+        run: |
+          # Compare current env to dev as baseline
+          case "${{ matrix.env }}" in
+            dev)  REF="${{ env.DEV_URL }}" ;;
+            test) REF="${{ env.DEV_URL }}" ;;
+            prod) REF="${{ env.DEV_URL }}" ;;
+          esac
+          liquibase \
+            --url="${{ steps.envmap.outputs.url }}" \
+            --username="${{ steps.creds.outputs.username }}" \
+            --password="${{ steps.creds.outputs.password }}" \
+            --changeLogFile="${{ env.CHANGELOG }}" \
+            --referenceUrl="$REF" \
+            diff || true
