@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Environment"
+        description: "Environment to deploy"
         required: true
         type: choice
         options: [dev, test, prod]
@@ -58,13 +58,21 @@ jobs:
             test) DB_URL="jdbc:postgresql://localhost:5434/postgres"; CONTEXTS="test" ;;
             prod) DB_URL="jdbc:postgresql://localhost:5435/postgres"; CONTEXTS="prod" ;;
           esac
+
           SNAPSHOT="${GITHUB_WORKSPACE}/snapshot-${TARGET}-${RUN_ID}.json"
           DIFF="${GITHUB_WORKSPACE}/diff-${TARGET}-${RUN_ID}.txt"
+
+          # Derive directory + basename so Liquibase's ResourceAccessor can resolve the snapshot
+          SNAPSHOT_DIR="$(dirname "$SNAPSHOT")"
+          SNAPSHOT_BASENAME="$(basename "$SNAPSHOT")"
+
           {
             echo "DB_URL=$DB_URL"
             echo "CONTEXTS=$CONTEXTS"
             echo "SNAPSHOT=$SNAPSHOT"
             echo "DIFF=$DIFF"
+            echo "SNAPSHOT_DIR=$SNAPSHOT_DIR"
+            echo "SNAPSHOT_BASENAME=$SNAPSHOT_BASENAME"
             echo "TARGET=$TARGET"
             echo "RUN_ID=$RUN_ID"
           } >> "$GITHUB_ENV"
@@ -92,6 +100,8 @@ jobs:
           CONTEXTS: ${{ env.CONTEXTS }}
           SNAPSHOT: ${{ env.SNAPSHOT }}
           DIFF:     ${{ env.DIFF }}
+          SNAPSHOT_DIR: ${{ env.SNAPSHOT_DIR }}
+          SNAPSHOT_BASENAME: ${{ env.SNAPSHOT_BASENAME }}
           # DB auth
           LB_USER:  ${{ secrets.LB_USER }}
           LB_PASSWORD: ${{ secrets.LB_PASSWORD }}

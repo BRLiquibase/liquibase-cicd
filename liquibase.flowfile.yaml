@@ -1,5 +1,6 @@
-# Flow: snapshot → update → diff (reference = pre-snapshot via offline URL)
-# Values come from env: DB_URL, CONTEXTS, SNAPSHOT, DIFF, LB_USER, LB_PASSWORD
+# Flow: snapshot → update → diff (diffs against the pre-snapshot)
+# Values are injected via env vars by the GitHub workflow:
+#   DB_URL, CONTEXTS, SNAPSHOT, DIFF, SNAPSHOT_DIR, SNAPSHOT_BASENAME, LB_USER, LB_PASSWORD
 
 stages:
   deploy:
@@ -25,7 +26,8 @@ stages:
       - type: liquibase
         command: diff
         cmdArgs:
-          # LIVE target vs PRE snapshot (as offline reference)
+          # Compare LIVE target vs the PRE snapshot (offline reference)
           url: "${DB_URL}"
-          referenceUrl: "offline:postgresql?snapshot=${SNAPSHOT}"
+          referenceUrl: "offline:postgresql?snapshot=${SNAPSHOT_BASENAME}"
+          searchPath: "${SNAPSHOT_DIR}"
           outputFile: "${DIFF}"
