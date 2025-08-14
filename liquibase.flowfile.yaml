@@ -25,7 +25,7 @@ stages:
       - type: liquibase
         command: diff
         cmdArgs:
-          # Compare live DB to the pre-run snapshot via the offline snapshot driver
+          # LIVE target vs PRE snapshot (as offline reference)
           url: "${DB_URL}"
-          referenceUrl: "offline:snapshot?snapshot=${SNAPSHOT}"
+          referenceUrl: "offline:postgresql?snapshot=${SNAPSHOT}"
           outputFile: "${DIFF}"
