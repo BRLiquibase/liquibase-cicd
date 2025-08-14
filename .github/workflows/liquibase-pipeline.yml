@@ -1,4 +1,4 @@
-name: Liquibase Pipeline (Flow-based)
+name: Liquibase Pipeline (Flow + Policy Gate)
 
 on:
   workflow_dispatch:
@@ -7,62 +7,97 @@ on:
         description: 'Environment to run'
         required: true
         type: choice
-        options: [dev, test, prod, all]
+        options: [dev, test, prod]
         default: dev
-      policies:
-        description: 'Run policies (checks run)?'
-        required: true
-        type: choice
-        options: [on, off]
-        default: on
-      snapshot:
-        description: 'Run snapshot (basic)?'
-        required: true
-        type: choice
-        options: [on, off]
-        default: on
 
 jobs:
-  deploy:
+  # 1) Run policies (do not fail the job; record pass/fail)
+  policies:
     runs-on: self-hosted
-    strategy:
-      matrix:
-        env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
-
+    outputs:
+      lb_url:    ${{ steps.pick.outputs.LB_URL }}
+      policy_ok: ${{ steps.check.outputs.POLICY_OK }}
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
       LB_USER:  postgres
       LB_PWD:   secret
-
+      CHANGELOG_FILE: changelog/master.xml
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Pick target URL
-        id: envmap
+        id: pick
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ matrix.env }}" in
+          case "${{ inputs.target }}" in
             dev)  LB_URL="${{ env.DEV_URL }}";;
             test) LB_URL="${{ env.TEST_URL }}";;
             prod) LB_URL="${{ env.PROD_URL }}";;
           esac
           echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Run flow
+      - name: Run policy checks (record pass/fail)
+        id: check
         shell: bash
         env:
-          # flow variables
-          LB_URL:        ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER:       ${{ env.LB_USER }}
-          LB_PWD:        ${{ env.LB_PWD }}
-          DEV_URL:       ${{ env.DEV_URL }}
-          TEST_URL:      ${{ env.TEST_URL }}
-          RUN_POLICIES:  ${{ inputs.policies }}   # on/off
-          RUN_SNAPSHOT:  ${{ inputs.snapshot }}   # on/off
+          LB_URL: ${{ steps.pick.outputs.LB_URL }}
+        run: |
+          set +e
+          liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
+            checks run \
+            --changelog-file="${CHANGELOG_FILE}" \
+            --url="${LB_URL}" --username="${LB_USER}" --password="${LB_PWD}"
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "POLICY_OK=true"  >> "$GITHUB_OUTPUT"
+            echo "✅ Policies passed."
+          else
+            echo "POLICY_OK=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Policies failed; approval required to continue."
+          fi
+          exit 0
+
+  # 2) Manual approval gate — only when policies failed
+  approval:
+    needs: policies
+    if: ${{ needs.policies.outputs.policy_ok == 'false' }}
+    runs-on: self-hosted
+    environment:
+      name: 'policy-override'   # create this in Settings → Environments
+    steps:
+      - name: Awaiting manual approval
+        run: echo "Policies failed; waiting for approval to proceed."
+
+  # 3) Deploy flow (checks are skipped here because we already handled them)
+  deploy:
+    needs: [policies, approval]
+    if: ${{ needs.policies.outputs.policy_ok == 'true' || needs.approval.result == 'success' }}
+    runs-on: self-hosted
+    env:
+      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
+      TEST_URL: jdbc:postgresql://localhost:5434/postgres
+      LB_USER:  postgres
+      LB_PWD:   secret
+      RUN_POLICIES: off   # tell the flow to skip checks now
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run flow (snapshot → update → diff dev→test)
+        shell: bash
+        env:
+          LB_URL:  ${{ needs.policies.outputs.lb_url }}
+          LB_USER: ${{ env.LB_USER }}
+          LB_PWD:  ${{ env.LB_PWD }}
+          DEV_URL: ${{ env.DEV_URL }}
+          TEST_URL: ${{ env.TEST_URL }}
+          RUN_POLICIES: ${{ env.RUN_POLICIES }}
         run: |
           set -euo pipefail
           liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow
+          # If your file name is custom, use:
+          # liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow --flow-file=liquibase.flowfile.yaml
