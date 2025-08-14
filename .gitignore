@@ -27,3 +27,6 @@ __pycache__/
 
 # Temporary files
 tmp/
+
+# Ignore GitHub Actions runner files
+actions-runner/
