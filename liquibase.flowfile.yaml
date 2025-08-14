@@ -1,10 +1,9 @@
-# Runs: checks → snapshot → update → diff(dev→test)
-# Expects these env vars at runtime: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
-# Optional: CHANGELOG_FILE (defaults to changelog/master.xml), CONTEXTS (omit by default)
+# Runs: policies (checks) → simple snapshot → update → diff (dev → test)
+# Expects env vars: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
+# Optional: CHANGELOG_FILE (defaults to changelog/master.xml)
 
 globalVariables:
   CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
-  CONTEXTS: "${CONTEXTS:-null}"  # null means Liquibase omits the arg automatically
 
 stages:
   Default:
@@ -31,7 +30,6 @@ stages:
           url: "${LB_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"
-          contexts: "${CONTEXTS}"
 
       - type: liquibase
         command: diff

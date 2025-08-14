@@ -9,30 +9,21 @@ on:
         type: choice
         options: [dev, test, prod, all]
         default: dev
-      policies:
-        description: 'Run policies (checks run)?'
-        required: true
-        type: choice
-        options: [on, off]
-        default: on
-      snapshot:
-        description: 'Run snapshot (basic)?'
-        required: true
-        type: choice
-        options: [on, off]
-        default: on
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: self-hosted   # local runner; Liquibase already installed
     strategy:
       matrix:
         env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
 
     env:
+      # JDBC URLs for your local containers
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
+
+      # Simple creds (adjust if needed)
       LB_USER:  postgres
       LB_PWD:   secret
 
@@ -40,41 +31,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pick target URL + flow
+      - name: Pick target URL
         id: envmap
         shell: bash
         run: |
+          set -euo pipefail
           case "${{ matrix.env }}" in
             dev)  LB_URL="${{ env.DEV_URL }}";;
             test) LB_URL="${{ env.TEST_URL }}";;
             prod) LB_URL="${{ env.PROD_URL }}";;
+            *) echo "Unknown env '${{ matrix.env }}'"; exit 1;;
           esac
-
-          # Decide which flow to run based on inputs
-          if [ "${{ inputs.policies }}" = "on" ] && [ "${{ inputs.snapshot }}" = "on" ]; then
-            FLOW="policies-snapshot-update-diff"
-          elif [ "${{ inputs.policies }}" = "on" ] && [ "${{ inputs.snapshot }}" = "off" ]; then
-            FLOW="policies-update-diff"
-          elif [ "${{ inputs.policies }}" = "off" ] && [ "${{ inputs.snapshot }}" = "on" ]; then
-            FLOW="snapshot-update-diff"
-          else
-            FLOW="update-diff"
-          fi
-
           echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
-          echo "FLOW=$FLOW" >> "$GITHUB_OUTPUT"
 
-            - name: Run flow
-            shell: bash
-            env:
-                LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-                LB_USER: ${{ env.LB_USER }}
-                LB_PWD:  ${{ env.LB_PWD }}
-                DEV_URL: ${{ env.DEV_URL }}
-                TEST_URL: ${{ env.TEST_URL }}
-            run: |
-                liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow
-                # If your file is named `.flowfile.yaml` (not the default), use:
-                # liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow --flow-file=.flowfile.yaml
-
-
+      - name: Run flow (policies → snapshot → update → diff dev→test)
+        shell: bash
+        env:
+          # Variables consumed by your flow file
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ env.LB_USER }}
+          LB_PWD:  ${{ env.LB_PWD }}
+          DEV_URL: ${{ env.DEV_URL }}
+          TEST_URL: ${{ env.TEST_URL }}
+        run: |
+          set -euo pipefail
+          # Uses LIQUIBASE_PRO_LICENSE GitHub secret for Pro features (flow + checks)
+          liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow
+          # If your flow file is named differently, use:
+          # liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow --flow-file=.flowfile.yaml
