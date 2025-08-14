@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Environment"
+        description: "Environment to deploy"
         required: true
         type: choice
         options: [dev, test, prod]
@@ -22,43 +22,50 @@ permissions:
 jobs:
   run-flow:
     runs-on: self-hosted
+
+    # DB creds come from repo secrets; adjust names/values as you like
     env:
       LB_USER: ${{ secrets.LB_USER || 'postgres' }}
       LB_PASSWORD: ${{ secrets.LB_PASSWORD || 'secret' }}
-      # If you want Pro license injected, keep using your defaults file step or pass via CLI.
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Verify Liquibase on PATH
+        shell: bash
         run: |
-          command -v liquibase >/dev/null || { echo "Liquibase not on PATH"; exit 1; }
+          command -v liquibase >/dev/null || { echo "Liquibase not on PATH for runner user"; exit 1; }
           liquibase --version
 
-      # Optional: defaults file to inject your Pro license quietly
-      - name: Write defaults (inject license if present)
+      - name: Write defaults (inject Pro license if present)
         id: defaults
+        shell: bash
         run: |
+          # Minimal defaults; changeLogFile is referenced by your flow
           cat > liq-defaults.properties <<'PROPS'
           changeLogFile=changelog/master.xml
           liquibase.hub.mode=off
           PROPS
+          # Only add the license property if the secret exists
           if [ -n "${{ secrets.LIQUIBASE_PRO_LICENSE }}" ]; then
             echo "liquibase.pro.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
           fi
-          echo "file=$(pwd)/liq-defaults.properties" >> $GITHUB_OUTPUT
+          echo "file=$(pwd)/liq-defaults.properties" >> "$GITHUB_OUTPUT"
 
       - name: Run Flow (snapshot → update → diff)
+        shell: bash
         run: |
+          # Pass Flow variables BEFORE 'flow'
           liquibase \
+            -DTARGET=${{ github.event.inputs.target }} \
+            -DPOLICIES=${{ github.event.inputs.policies }} \
+            -DRUN_ID="${{ github.run_id }}-${{ github.run_attempt }}" \
             --defaultsFile="${{ steps.defaults.outputs.file }}" \
             flow \
-            --flow-file=liquibase.flowfile.yaml \
-            -DTARGET='${{ github.event.inputs.target }}' \
-            -DPOLICIES='${{ github.event.inputs.policies }}' \
-            -DRUN_ID='${{ github.run_id }}-${{ github.run_attempt }}'
+            --flow-file=liquibase.flowfile.yaml
 
-      - name: Upload snapshot & diff
+      - name: Upload snapshot & diff artifacts
         uses: actions/upload-artifact@v4
         with:
           name: liquibase-artifacts-${{ github.event.inputs.target }}

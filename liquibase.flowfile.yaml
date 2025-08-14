@@ -1,0 +1,109 @@
+# Liquibase Flow: snapshot → (optional) checks → update → diff-against-snapshot
+# Variables (pass via -DVAR=value or set as environment variables):
+#   TARGET   : dev | test | prod   (default dev)
+#   POLICIES : on  | off           (default off)
+#   RUN_ID   : freeform identifier used in filenames (default manual)
+#
+# Requires Liquibase Pro for `checks run`.
+# Expects LB_USER / LB_PASSWORD to be set in the environment (e.g., GitHub Secrets).
+
+stages:
+  deploy:
+    actions:
+      # ---------- Pre: snapshot (per env) ----------
+      - type: liquibase
+        if: "${TARGET:-dev} == 'dev'"
+        command: snapshot
+        cmdArgs:
+          url: "jdbc:postgresql://localhost:5433/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          snapshot-format: "JSON"
+          output-file: "snapshot-dev-${RUN_ID:-manual}.json"
+
+      - type: liquibase
+        if: "${TARGET:-dev} == 'test'"
+        command: snapshot
+        cmdArgs:
+          url: "jdbc:postgresql://localhost:5434/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          snapshot-format: "JSON"
+          output-file: "snapshot-test-${RUN_ID:-manual}.json"
+
+      - type: liquibase
+        if: "${TARGET:-dev} == 'prod'"
+        command: snapshot
+        cmdArgs:
+          url: "jdbc:postgresql://localhost:5435/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          snapshot-format: "JSON"
+          output-file: "snapshot-prod-${RUN_ID:-manual}.json"
+
+      # ---------- Optional: policies/checks (pre-update) ----------
+      - type: liquibase
+        if: "${POLICIES:-off} == 'on'"
+        command: checks run
+
+      # ---------- Update (per env, contexts isolated) ----------
+      - type: liquibase
+        if: "${TARGET:-dev} == 'dev'"
+        command: update
+        cmdArgs:
+          changelog-file: "changelog/master.xml"
+          url: "jdbc:postgresql://localhost:5433/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          contexts: "dev"
+
+      - type: liquibase
+        if: "${TARGET:-dev} == 'test'"
+        command: update
+        cmdArgs:
+          changelog-file: "changelog/master.xml"
+          url: "jdbc:postgresql://localhost:5434/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          contexts: "test"
+
+      - type: liquibase
+        if: "${TARGET:-dev} == 'prod'"
+        command: update
+        cmdArgs:
+          changelog-file: "changelog/master.xml"
+          url: "jdbc:postgresql://localhost:5435/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          contexts: "prod"
+
+      # ---------- Post: diff live vs the pre-snapshot ----------
+      - type: liquibase
+        if: "${TARGET:-dev} == 'dev'"
+        command: diff
+        cmdArgs:
+          reference-snapshot: "snapshot-dev-${RUN_ID:-manual}.json"
+          url: "jdbc:postgresql://localhost:5433/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          output-file: "diff-dev-${RUN_ID:-manual}.txt"
+
+      - type: liquibase
+        if: "${TARGET:-dev} == 'test'"
+        command: diff
+        cmdArgs:
+          reference-snapshot: "snapshot-test-${RUN_ID:-manual}.json"
+          url: "jdbc:postgresql://localhost:5434/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          output-file: "diff-test-${RUN_ID:-manual}.txt"
+
+      - type: liquibase
+        if: "${TARGET:-dev} == 'prod'"
+        command: diff
+        cmdArgs:
+          reference-snapshot: "snapshot-prod-${RUN_ID:-manual}.json"
+          url: "jdbc:postgresql://localhost:5435/postgres"
+          username: "${LB_USER}"
+          password: "${LB_PASSWORD}"
+          output-file: "diff-prod-${RUN_ID:-manual}.txt"
