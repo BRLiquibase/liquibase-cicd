@@ -1,1 +1,1 @@
-# liquibase-cicd
+# Liquibase + GitHub Actions Demo
