@@ -1,10 +1,10 @@
-name: Liquibase Simple Update (Local LB)
+name: Liquibase Flow (Snapshot → Update → Diff)
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Where should the update run?"
+        description: "Environment"
         required: true
         type: choice
         options: [dev, test, prod]
@@ -20,35 +20,22 @@ permissions:
   contents: read
 
 jobs:
-  update:
+  run-flow:
     runs-on: self-hosted
-
     env:
-      # Local containers
-      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
-      TEST_URL: jdbc:postgresql://localhost:5434/postgres
-      PROD_URL: jdbc:postgresql://localhost:5435/postgres
-
-      # Secrets (set in repo → Settings → Secrets and variables → Actions)
       LB_USER: ${{ secrets.LB_USER || 'postgres' }}
       LB_PASSWORD: ${{ secrets.LB_PASSWORD || 'secret' }}
-      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE || '' }}
+      # If you want Pro license injected, keep using your defaults file step or pass via CLI.
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Verify Liquibase on PATH
-        shell: bash
         run: |
-          set -e
-          if ! command -v liquibase >/dev/null 2>&1; then
-            echo "Liquibase is not on PATH for the self-hosted runner user." >&2
-            echo "Add it to PATH or symlink it, e.g.: sudo ln -s /opt/liquibase/liquibase /usr/local/bin/liquibase" >&2
-            exit 1
-          fi
+          command -v liquibase >/dev/null || { echo "Liquibase not on PATH"; exit 1; }
           liquibase --version
 
+      # Optional: defaults file to inject your Pro license quietly
       - name: Write defaults (inject license if present)
         id: defaults
         run: |
@@ -56,38 +43,26 @@ jobs:
           changeLogFile=changelog/master.xml
           liquibase.hub.mode=off
           PROPS
-          if [ -n "${LIQUIBASE_PRO_LICENSE}" ]; then
-            echo "liquibase.pro.licenseKey=${LIQUIBASE_PRO_LICENSE}" >> liq-defaults.properties
+          if [ -n "${{ secrets.LIQUIBASE_PRO_LICENSE }}" ]; then
+            echo "liquibase.pro.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
           fi
           echo "file=$(pwd)/liq-defaults.properties" >> $GITHUB_OUTPUT
 
-      - name: Pick DB URL + contexts
-        id: envmap
-        run: |
-          case "${{ github.event.inputs.target }}" in
-            dev)  URL="${{ env.DEV_URL }}";  CONTEXTS="dev,dev,test,prod" ;;
-            test) URL="${{ env.TEST_URL }}"; CONTEXTS="test,dev,test,prod" ;;
-            prod) URL="${{ env.PROD_URL }}"; CONTEXTS="prod,dev,test,prod" ;;
-          esac
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "contexts=$CONTEXTS" >> $GITHUB_OUTPUT
-
-      - name: (Optional) Policies
-        if: ${{ github.event.inputs.policies == 'on' }}
+      - name: Run Flow (snapshot → update → diff)
         run: |
           liquibase \
             --defaultsFile="${{ steps.defaults.outputs.file }}" \
-            --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ env.LB_USER }}" \
-            --password="${{ env.LB_PASSWORD }}" \
-            checks run || true
+            flow \
+            --flow-file=liquibase.flowfile.yaml \
+            -DTARGET='${{ github.event.inputs.target }}' \
+            -DPOLICIES='${{ github.event.inputs.policies }}' \
+            -DRUN_ID='${{ github.run_id }}-${{ github.run_attempt }}'
 
-      - name: Update ${{ github.event.inputs.target }}
-        run: |
-          liquibase \
-            --defaultsFile="${{ steps.defaults.outputs.file }}" \
-            --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ env.LB_USER }}" \
-            --password="${{ env.LB_PASSWORD }}" \
-            --contexts="${{ steps.envmap.outputs.contexts }}" \
-            update
+      - name: Upload snapshot & diff
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquibase-artifacts-${{ github.event.inputs.target }}
+          path: |
+            snapshot-${{ github.event.inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}.json
+            diff-${{ github.event.inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}.txt
+          if-no-files-found: warn
