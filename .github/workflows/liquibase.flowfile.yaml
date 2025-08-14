@@ -1,0 +1,73 @@
+name: Liquibase Flow (Snapshot → Update → Diff)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Environment"
+        required: true
+        type: choice
+        options: [dev, test, prod]
+        default: dev
+      policies:
+        description: "Run Liquibase Pro checks/policies before update?"
+        required: true
+        type: choice
+        options: [off, on]
+        default: off
+
+permissions:
+  contents: read
+
+jobs:
+  run-flow:
+    runs-on: self-hosted
+
+    env:
+      # From repo secrets (with safe local defaults)
+      LB_USER: ${{ secrets.LB_USER || 'postgres' }}
+      LB_PASSWORD: ${{ secrets.LB_PASSWORD || 'secret' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Liquibase on PATH
+        shell: bash
+        run: |
+          command -v liquibase >/dev/null || { echo "Liquibase not on PATH"; exit 1; }
+          liquibase --version
+
+      - name: Write defaults (inject Pro license if present)
+        id: defaults
+        shell: bash
+        run: |
+          cat > liq-defaults.properties <<'PROPS'
+          changeLogFile=changelog/master.xml
+          liquibase.hub.mode=off
+          PROPS
+          # Only add the license property if the secret exists
+          if [ -n "${{ secrets.LIQUIBASE_PRO_LICENSE }}" ]; then
+            echo "liquibase.pro.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
+          fi
+          echo "file=$(pwd)/liq-defaults.properties" >> "$GITHUB_OUTPUT"
+
+      - name: Run Flow (snapshot → update → diff)
+        shell: bash
+        run: |
+          liquibase \
+            -DTARGET=${{ github.event.inputs.target }} \
+            -DPOLICIES=${{ github.event.inputs.policies }} \
+            -DRUN_ID="${{ github.run_id }}-${{ github.run_attempt }}" \
+            --defaultsFile="${{ steps.defaults.outputs.file }}" \
+            flow \
+            --flow-file=liquibase.flowfile.yaml
+
+      - name: Upload snapshot & diff artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquibase-artifacts-${{ github.event.inputs.target }}
+          path: |
+            snapshot-${{ github.event.inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}.json
+            diff-${{ github.event.inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}.txt
+          if-no-files-found: warn
