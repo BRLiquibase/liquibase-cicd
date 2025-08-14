@@ -1,33 +1,114 @@
-# Flow: snapshot → update → diff (diffs against the pre-snapshot)
-# Values are injected via env vars by the GitHub workflow:
-#   DB_URL, CONTEXTS, SNAPSHOT, DIFF, SNAPSHOT_DIR, SNAPSHOT_BASENAME, LB_USER, LB_PASSWORD
+flows:
+  # policies → snapshot → update → diff(dev→test)
+  policies-snapshot-update-diff:
+    env:
+      CHANGELOG: changelog/master.xml
+    steps:
+      - liquibase:
+          command: checks run
+          args:
+            changeLogFile: ${CHANGELOG}
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: snapshot
+          args:
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: update
+          args:
+            changeLogFile: ${CHANGELOG}
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: diff
+          args:
+            referenceUrl: ${DEV_URL}
+            referenceUsername: ${LB_USER}
+            referencePassword: ${LB_PWD}
+            url: ${TEST_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
 
-stages:
-  deploy:
-    actions:
-      - type: liquibase
-        command: snapshot
-        cmdArgs:
-          url: "${DB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PASSWORD}"
-          snapshotFormat: "JSON"
-          outputFile: "${SNAPSHOT}"
+  # policies → update → diff (no snapshot)
+  policies-update-diff:
+    env:
+      CHANGELOG: changelog/master.xml
+    steps:
+      - liquibase:
+          command: checks run
+          args:
+            changeLogFile: ${CHANGELOG}
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: update
+          args:
+            changeLogFile: ${CHANGELOG}
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: diff
+          args:
+            referenceUrl: ${DEV_URL}
+            referenceUsername: ${LB_USER}
+            referencePassword: ${LB_PWD}
+            url: ${TEST_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
 
-      - type: liquibase
-        command: update
-        cmdArgs:
-          changelogFile: "changelog/master.xml"
-          url: "${DB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PASSWORD}"
-          contexts: "${CONTEXTS}"
+  # snapshot → update → diff (no policies)
+  snapshot-update-diff:
+    env:
+      CHANGELOG: changelog/master.xml
+    steps:
+      - liquibase:
+          command: snapshot
+          args:
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: update
+          args:
+            changeLogFile: ${CHANGELOG}
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: diff
+          args:
+            referenceUrl: ${DEV_URL}
+            referenceUsername: ${LB_USER}
+            referencePassword: ${LB_PWD}
+            url: ${TEST_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
 
-      - type: liquibase
-        command: diff
-        cmdArgs:
-          # Compare LIVE target vs the PRE snapshot (offline reference)
-          url: "${DB_URL}"
-          referenceUrl: "offline:postgresql?snapshot=${SNAPSHOT_BASENAME}"
-          searchPath: "${SNAPSHOT_DIR}"
-          outputFile: "${DIFF}"
+  # update → diff (no policies, no snapshot)
+  update-diff:
+    env:
+      CHANGELOG: changelog/master.xml
+    steps:
+      - liquibase:
+          command: update
+          args:
+            changeLogFile: ${CHANGELOG}
+            url: ${LB_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}
+      - liquibase:
+          command: diff
+          args:
+            referenceUrl: ${DEV_URL}
+            referenceUsername: ${LB_USER}
+            referencePassword: ${LB_PWD}
+            url: ${TEST_URL}
+            username: ${LB_USER}
+            password: ${LB_PWD}

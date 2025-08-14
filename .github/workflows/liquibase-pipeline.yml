@@ -1,121 +1,76 @@
-name: Liquibase Flow (Snapshot → Update → Diff)
+name: Liquibase Pipeline (Flow-based)
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Environment to deploy"
+        description: 'Environment to run'
         required: true
         type: choice
-        options: [dev, test, prod]
+        options: [dev, test, prod, all]
         default: dev
       policies:
-        description: "Run Liquibase Pro checks/policies before update?"
+        description: 'Run policies (checks run)?'
         required: true
         type: choice
-        options: [off, on]
-        default: off
-
-permissions:
-  contents: read
+        options: [on, off]
+        default: on
+      snapshot:
+        description: 'Run snapshot (basic)?'
+        required: true
+        type: choice
+        options: [on, off]
+        default: on
 
 jobs:
-  run-flow:
+  deploy:
     runs-on: self-hosted
+    strategy:
+      matrix:
+        env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
+
+    env:
+      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
+      TEST_URL: jdbc:postgresql://localhost:5434/postgres
+      PROD_URL: jdbc:postgresql://localhost:5435/postgres
+      LB_USER:  postgres
+      LB_PWD:   secret
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Liquibase on PATH
+      - name: Pick target URL + flow
+        id: envmap
         shell: bash
         run: |
-          command -v liquibase >/dev/null || { echo "Liquibase not on PATH"; exit 1; }
-          liquibase --version
-
-      - name: Write defaults (inject Pro license if present)
-        id: defaults
-        shell: bash
-        run: |
-          cat > liq-defaults.properties <<'PROPS'
-          changeLogFile=changelog/master.xml
-          liquibase.hub.mode=off
-          PROPS
-          if [ -n "${{ secrets.LIQUIBASE_PRO_LICENSE }}" ]; then
-            echo "liquibase.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
-          fi
-          echo "file=$(pwd)/liq-defaults.properties" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve env-specific vars for Flow
-        id: resolve
-        shell: bash
-        env:
-          TARGET: ${{ github.event.inputs.target }}
-          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          case "$TARGET" in
-            dev)  DB_URL="jdbc:postgresql://localhost:5433/postgres"; CONTEXTS="dev"  ;;
-            test) DB_URL="jdbc:postgresql://localhost:5434/postgres"; CONTEXTS="test" ;;
-            prod) DB_URL="jdbc:postgresql://localhost:5435/postgres"; CONTEXTS="prod" ;;
+          case "${{ matrix.env }}" in
+            dev)  LB_URL="${{ env.DEV_URL }}";;
+            test) LB_URL="${{ env.TEST_URL }}";;
+            prod) LB_URL="${{ env.PROD_URL }}";;
           esac
 
-          SNAPSHOT="${GITHUB_WORKSPACE}/snapshot-${TARGET}-${RUN_ID}.json"
-          DIFF="${GITHUB_WORKSPACE}/diff-${TARGET}-${RUN_ID}.txt"
+          # Decide which flow to run based on inputs
+          if [ "${{ inputs.policies }}" = "on" ] && [ "${{ inputs.snapshot }}" = "on" ]; then
+            FLOW="policies-snapshot-update-diff"
+          elif [ "${{ inputs.policies }}" = "on" ] && [ "${{ inputs.snapshot }}" = "off" ]; then
+            FLOW="policies-update-diff"
+          elif [ "${{ inputs.policies }}" = "off" ] && [ "${{ inputs.snapshot }}" = "on" ]; then
+            FLOW="snapshot-update-diff"
+          else
+            FLOW="update-diff"
+          fi
 
-          # Derive directory + basename so Liquibase's ResourceAccessor can resolve the snapshot
-          SNAPSHOT_DIR="$(dirname "$SNAPSHOT")"
-          SNAPSHOT_BASENAME="$(basename "$SNAPSHOT")"
+          echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
+          echo "FLOW=$FLOW" >> "$GITHUB_OUTPUT"
 
-          {
-            echo "DB_URL=$DB_URL"
-            echo "CONTEXTS=$CONTEXTS"
-            echo "SNAPSHOT=$SNAPSHOT"
-            echo "DIFF=$DIFF"
-            echo "SNAPSHOT_DIR=$SNAPSHOT_DIR"
-            echo "SNAPSHOT_BASENAME=$SNAPSHOT_BASENAME"
-            echo "TARGET=$TARGET"
-            echo "RUN_ID=$RUN_ID"
-          } >> "$GITHUB_ENV"
-
-      - name: (Optional) Pro policy checks
-        if: ${{ github.event.inputs.policies == 'on' }}
+      - name: Run flow
         shell: bash
         env:
-          DB_URL:   ${{ env.DB_URL }}
-          LB_USER:  ${{ secrets.LB_USER }}
-          LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ env.LB_USER }}
+          LB_PWD:  ${{ env.LB_PWD }}
+          DEV_URL: ${{ env.DEV_URL }}
+          TEST_URL: ${{ env.TEST_URL }}
         run: |
-          liquibase \
-            --defaultsFile="${{ steps.defaults.outputs.file }}" \
-            --url="$DB_URL" \
-            --username="$LB_USER" \
-            --password="$LB_PASSWORD" \
-            checks run || true
-
-      - name: Run Flow (snapshot → update → diff)
-        shell: bash
-        env:
-          # Flow inputs
-          DB_URL:   ${{ env.DB_URL }}
-          CONTEXTS: ${{ env.CONTEXTS }}
-          SNAPSHOT: ${{ env.SNAPSHOT }}
-          DIFF:     ${{ env.DIFF }}
-          SNAPSHOT_DIR: ${{ env.SNAPSHOT_DIR }}
-          SNAPSHOT_BASENAME: ${{ env.SNAPSHOT_BASENAME }}
-          # DB auth
-          LB_USER:  ${{ secrets.LB_USER }}
-          LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
-        run: |
-          liquibase \
-            --defaultsFile="${{ steps.defaults.outputs.file }}" \
-            flow \
-            --flow-file=liquibase.flowfile.yaml
-
-      - name: Upload snapshot & diff artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: liquibase-artifacts-${{ env.TARGET }}
-          path: |
-            ${{ env.SNAPSHOT }}
-            ${{ env.DIFF }}
-          if-no-files-found: error
+          liquibase flow ${{ steps.envmap.outputs.FLOW }}
