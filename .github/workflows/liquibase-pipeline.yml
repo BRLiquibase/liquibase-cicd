@@ -1,4 +1,4 @@
-name: Liquibase Pipeline
+name: Liquibase Pipeline (Secrets)
 
 on:
   workflow_dispatch:
@@ -31,75 +31,51 @@ concurrency:
 
 jobs:
   deploy:
-    # Run only for the requested env (or all)
-    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == matrix.env }}
-    runs-on: self-hosted   # your script already starts a self-hosted runner
+    runs-on: self-hosted
+
     strategy:
       matrix:
-        env: [dev, test, prod]
+        env: ${{ fromJson( github.event.inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', github.event.inputs.target) ) }}
 
     env:
-      # Changelog & static URLs for your three local DBs
       CHANGELOG: changelog/master.xml
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
-
-      # Optional Vault (matches your setup script)
-      VAULT_ADDR: http://localhost:8200
-      VAULT_TOKEN: vault-plaintext-root-token
+      LB_USER: ${{ secrets.LB_USER }}
+      LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
+      LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Liquibase
+      - name: Install Liquibase (latest)
         uses: liquibase/setup-liquibase@v1
         with:
-          liquibase-version: 4.29.2
+          version: 'latest'
+          edition: 'pro'
 
-      - name: Resolve DB credentials (Vault → GitHub Secrets → defaults)
-        id: creds
-        shell: bash
-        env:
-          LB_USER_SECRET: ${{ secrets.LB_USER }}
-          LB_PWD_SECRET:  ${{ secrets.LB_PASSWORD }}
+      - name: Create defaults file with Pro license
+        id: defaults
         run: |
-          set -e
-          USERNAME=""
-          PASSWORD=""
+          cat > liq-defaults.properties <<'PROPS'
+          changeLogFile=changelog/master.xml
+          liquibase.hub.mode=off
+          PROPS
 
-          # 1) Try Vault (optional)
-          if command -v curl >/dev/null 2>&1 && curl -sf "$VAULT_ADDR/v1/secret/data/liquibase/credentials" -H "X-Vault-Token: $VAULT_TOKEN" -o /tmp/creds.json; then
-            # Use jq if present; else do a simple grep/sed fallback
-            if command -v jq >/dev/null 2>&1; then
-              USERNAME=$(jq -r '.data.data.username' /tmp/creds.json)
-              PASSWORD=$(jq -r '.data.data.password' /tmp/creds.json)
-            else
-              USERNAME=$(grep -o '"username"[^,]*' /tmp/creds.json | sed 's/.*"username":"\([^"]*\)".*/\1/')
-              PASSWORD=$(grep -o '"password"[^,]*' /tmp/creds.json | sed 's/.*"password":"\([^"]*\)".*/\1/')
-            fi
+          if [ -n "${LIQUIBASE_PRO_LICENSE}" ]; then
+            echo "liquibase.pro.licenseKey=${LIQUIBASE_PRO_LICENSE}" >> liq-defaults.properties
           fi
 
-          # 2) Fall back to GitHub Secrets if provided
-          if [ -z "$USERNAME" ] && [ -n "$LB_USER_SECRET" ]; then USERNAME="$LB_USER_SECRET"; fi
-          if [ -z "$PASSWORD" ] && [ -n "$LB_PWD_SECRET" ]; then PASSWORD="$LB_PWD_SECRET"; fi
-
-          # 3) Final fallback to defaults (match your containers)
-          if [ -z "$USERNAME" ]; then USERNAME="postgres"; fi
-          if [ -z "$PASSWORD" ]; then PASSWORD="secret"; fi
-
-          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
-          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+          echo "defaultsFile=$(pwd)/liq-defaults.properties" >> $GITHUB_OUTPUT
 
       - name: Map environment to URL & contexts
         id: envmap
-        shell: bash
         run: |
           case "${{ matrix.env }}" in
             dev)
               URL="${{ env.DEV_URL }}"
-              # Include 'dev' + the "all three" context (dev,test,prod)
               CONTEXTS="dev,dev,test,prod"
               ;;
             test)
@@ -118,35 +94,34 @@ jobs:
         if: ${{ github.event.inputs.policies == 'on' }}
         run: |
           liquibase \
+            --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ steps.creds.outputs.username }}" \
-            --password="${{ steps.creds.outputs.password }}" \
-            --changeLogFile="${{ env.CHANGELOG }}" \
+            --username="${{ env.LB_USER }}" \
+            --password="${{ env.LB_PASSWORD }}" \
             checks run || true
 
       - name: Update ${{ matrix.env }}
         run: |
           liquibase \
+            --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ steps.creds.outputs.username }}" \
-            --password="${{ steps.creds.outputs.password }}" \
-            --changeLogFile="${{ env.CHANGELOG }}" \
+            --username="${{ env.LB_USER }}" \
+            --password="${{ env.LB_PASSWORD }}" \
             --contexts="${{ steps.envmap.outputs.contexts }}" \
             update
 
       - name: (Optional) Drift detection vs. dev
         if: ${{ github.event.inputs.drift == 'on' }}
         run: |
-          # Compare current env to dev as baseline
           case "${{ matrix.env }}" in
             dev)  REF="${{ env.DEV_URL }}" ;;
             test) REF="${{ env.DEV_URL }}" ;;
             prod) REF="${{ env.DEV_URL }}" ;;
           esac
           liquibase \
+            --defaultsFile="${{ steps.defaults.outputs.defaultsFile }}" \
             --url="${{ steps.envmap.outputs.url }}" \
-            --username="${{ steps.creds.outputs.username }}" \
-            --password="${{ steps.creds.outputs.password }}" \
-            --changeLogFile="${{ env.CHANGELOG }}" \
+            --username="${{ env.LB_USER }}" \
+            --password="${{ env.LB_PASSWORD }}" \
             --referenceUrl="$REF" \
             diff || true
