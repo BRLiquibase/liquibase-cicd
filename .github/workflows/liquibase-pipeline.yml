@@ -64,16 +64,17 @@ jobs:
           echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
           echo "FLOW=$FLOW" >> "$GITHUB_OUTPUT"
 
-      - name: Run flow
-        shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ env.LB_USER }}
-          LB_PWD:  ${{ env.LB_PWD }}
-          DEV_URL: ${{ env.DEV_URL }}
-          TEST_URL: ${{ env.TEST_URL }}
-        run: |
-          liquibase flow
-          # or if you kept a custom filename:
-          # liquibase flow --flow-file=.flowfile.yaml
+            - name: Run flow
+            shell: bash
+            env:
+                LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+                LB_USER: ${{ env.LB_USER }}
+                LB_PWD:  ${{ env.LB_PWD }}
+                DEV_URL: ${{ env.DEV_URL }}
+                TEST_URL: ${{ env.TEST_URL }}
+            run: |
+                liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow
+                # If your file is named `.flowfile.yaml` (not the default), use:
+                # liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow --flow-file=.flowfile.yaml
+
 
