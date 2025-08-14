@@ -23,11 +23,6 @@ jobs:
   run-flow:
     runs-on: self-hosted
 
-    # DB creds come from repo secrets; adjust names/values as you like
-    env:
-      LB_USER: ${{ secrets.LB_USER || 'postgres' }}
-      LB_PASSWORD: ${{ secrets.LB_PASSWORD || 'secret' }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,12 +37,10 @@ jobs:
         id: defaults
         shell: bash
         run: |
-          # Minimal defaults; changeLogFile is referenced by your flow
           cat > liq-defaults.properties <<'PROPS'
           changeLogFile=changelog/master.xml
           liquibase.hub.mode=off
           PROPS
-          # Only add the license property if the secret exists
           if [ -n "${{ secrets.LIQUIBASE_PRO_LICENSE }}" ]; then
             echo "liquibase.pro.licenseKey=${{ secrets.LIQUIBASE_PRO_LICENSE }}" >> liq-defaults.properties
           fi
@@ -55,12 +48,17 @@ jobs:
 
       - name: Run Flow (snapshot → update → diff)
         shell: bash
+        env:
+          # Flow variables as ENV (replaces -D flags)
+          TARGET:   ${{ github.event.inputs.target }}          # dev|test|prod
+          POLICIES: ${{ github.event.inputs.policies }}        # on|off
+          RUN_ID:   ${{ github.run_id }}-${{ github.run_attempt }}
+
+          # DB creds (from repo secrets)
+          LB_USER: ${{ secrets.LB_USER }}
+          LB_PASSWORD: ${{ secrets.LB_PASSWORD }}
         run: |
-          # Pass Flow variables BEFORE 'flow'
           liquibase \
-            -DTARGET=${{ github.event.inputs.target }} \
-            -DPOLICIES=${{ github.event.inputs.policies }} \
-            -DRUN_ID="${{ github.run_id }}-${{ github.run_attempt }}" \
             --defaultsFile="${{ steps.defaults.outputs.file }}" \
             flow \
             --flow-file=liquibase.flowfile.yaml
