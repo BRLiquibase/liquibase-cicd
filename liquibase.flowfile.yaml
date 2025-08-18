@@ -1,8 +1,12 @@
 # liquibase.flowfile.yaml
+# Runs: (optionally) checks → snapshot → update → diff(dev→test)
+# Expects env: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
+# Optional: CHANGELOG_FILE, RUN_POLICIES, RUN_SNAPSHOT
+
 globalVariables:
   CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
-  RUN_POLICIES:   "${RUN_POLICIES:-on}"
-  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"
+  RUN_POLICIES:   "${RUN_POLICIES:-on}"   # accepts: on/off/true/false/1/0
+  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # accepts: on/off/true/false/1/0
 
 stages:
   Default:
@@ -15,8 +19,9 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # Policies (checks) — run if on/true/1 (case-insensitive for 'true')
       - type: liquibase
-        if: "RUN_POLICIES == 'on'"
+        if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == 'True' || RUN_POLICIES == '1'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
@@ -24,14 +29,16 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # Snapshot (basic) — run if on/true/1 (case-insensitive for 'true')
       - type: liquibase
-        if: "RUN_SNAPSHOT == 'on'"
+        if: "RUN_SNAPSHOT == 'on' || RUN_SNAPSHOT == 'true' || RUN_SNAPSHOT == 'True' || RUN_SNAPSHOT == '1'"
         command: snapshot
         cmdArgs:
           url: "${LB_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # Update (always)
       - type: liquibase
         command: update
         cmdArgs:
@@ -40,6 +47,7 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
+      # Diff dev -> test (always)
       - type: liquibase
         command: diff
         cmdArgs:
