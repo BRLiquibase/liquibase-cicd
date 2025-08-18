@@ -1,19 +1,20 @@
-# Runs: (optionally) checks → snapshot → update → diff(dev→test)
-# Expects env: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
-# Optional: CHANGELOG_FILE, RUN_POLICIES
-
+# liquibase.flowfile.yaml
 globalVariables:
   CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
-  RUN_POLICIES:   "${RUN_POLICIES:-on}"   # 'on' or 'off'
-  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # 'on' or 'off'
+  RUN_POLICIES:   "${RUN_POLICIES:-on}"
+  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"
 
 stages:
   Default:
     actions:
-
       - type: liquibase
         command: status
-        
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url: "${LB_URL}"
+          username: "${LB_USER}"
+          password: "${LB_PWD}"
+
       - type: liquibase
         if: "RUN_POLICIES == 'on'"
         command: checks run
