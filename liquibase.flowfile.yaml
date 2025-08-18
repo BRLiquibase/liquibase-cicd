@@ -10,6 +10,10 @@ globalVariables:
 stages:
   Default:
     actions:
+
+      - type: liquibase
+        command: status
+        
       - type: liquibase
         if: "RUN_POLICIES == 'on'"
         command: checks run
