@@ -6,19 +6,12 @@
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
 
   <changeSet id="000" author="init" context="">
-<<<<<<< HEAD
-    <!-- <createTable tableName="demo_001">
-=======
-    <dropTable tableName="demo_001"/>
-
     <createTable tableName="demo_001">
->>>>>>> 55eeee9 (create table)
       <column name="id" type="BIGSERIAL">
         <constraints primaryKey="true" nullable="false"/>
       </column>
       <column name="name" type="TEXT"/>
       <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"/>
     </createTable>
-    
   </changeSet>
 </databaseChangeLog>
