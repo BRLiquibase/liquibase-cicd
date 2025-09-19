@@ -12,24 +12,19 @@
 ##    ATTRIBUTE: <ID, AUTHOR, CONTEXT, CONTEXT_FILTER, LABELS, DBMS, RUN_ON_CHANGE, RUN_ALWAYS, FAIL_ON_ERROR, ON_VALIDATION_FAIL, RUN_IN_TRANSACTION, LOGICAL_FILE_PATH, OBJECT_QUOTING_STRATEGY, CREATED, RUN_ORDER, IGNORE, RUN_WITH, RUN_WITH_SPOOL_FILE>
 ##    BILLING_MODE: <PROVISIONED, PAY_PER_REQUEST>
 ##    CASE_SENSITIVE: <true, false>
-##    CHANGE_TYPE_LIST: <comma-separated list; valid values: RENAMEVIEW, DROPFOREIGNKEYCONSTRAINT, DROPTABLE, DROPUNIQUECONSTRAINT, SQLFILE, MERGECOLUMNS, RENAMETRIGGER, TAGDATABASE, ADDNOTNULLCONSTRAINT, SETCOLUMNREMARKS, DISABLECHECKCONSTRAINT, ADDUNIQUECONSTRAINT, RENAMECOMPOSITETYPEATTRIBUTE, CREATEFUNCTION, CREATETRIGGER, DROPINDEX, DROPSEQUENCE, CREATESEQUENCE, DROPPACKAGE, OUTPUT, STOP, DROPNOTNULLCONSTRAINT, ENABLETRIGGER, SETTABLEREMARKS, DROPTRIGGER, DROPCOLUMN, DROPPROCEDURE, SQL, EXECUTECOMMAND, ADDCHECKCONSTRAINT, ALTERCOMPOSITETYPEATTRIBUTES, CREATEVIEW, DROPFUNCTION, CREATETABLE, DROPPACKAGEBODY, ENABLECHECKCONSTRAINT, LOADUPDATEDATA, CUSTOMCHANGE, DROPSYNONYM, INSERT, DROPDEFAULTVALUE, ADDCOLUMN, CHANGECOMPOSITETYPESCHEMA, CREATEPROCEDURE, LOADDATA, RENAMECOMPOSITETYPE, CREATEINDEX, DROPALLFOREIGNKEYCONSTRAINTS, CREATEPACKAGEBODY, CREATESYNONYM, DISABLETRIGGER, DELETE, RENAMESEQUENCE, ADDDEFAULTVALUE, DROPPRIMARYKEY, DROPCOMPOSITETYPE, UPDATE, CHANGECOMPOSITETYPEOWNER, MODIFYDATATYPE, ADDFOREIGNKEYCONSTRAINT, DROPCHECKCONSTRAINT, EMPTY, MARKUNUSED, ALTERSEQUENCE, CREATECOMPOSITETYPE, ADDAUTOINCREMENT, RENAMECOLUMN, ADDLOOKUPTABLE, DROPVIEW, CREATEPACKAGE, ADDPRIMARYKEY, RENAMETABLE>
-##    COLLECTION_NAME: <non-empty string>
+##    CHANGE_TYPE_LIST: <comma-separated list; valid values: RENAMEVIEW, DROPFOREIGNKEYCONSTRAINT, DROPTABLE, DROPUNIQUECONSTRAINT, RESTORETABLE, SQLFILE, MERGECOLUMNS, RENAMETRIGGER, CREATEVOLUME, TAGDATABASE, ALTERVOLUME, ADDNOTNULLCONSTRAINT, ALTERVIEWPROPERTIES, ALTERTABLEPROPERTIES, SETCOLUMNREMARKS, DISABLECHECKCONSTRAINT, ADDUNIQUECONSTRAINT, VACUUMTABLE, CREATEFUNCTION, CREATETRIGGER, DROPINDEX, DROPSEQUENCE, CREATESEQUENCE, DROPPACKAGE, OUTPUT, STOP, DROPNOTNULLCONSTRAINT, ENABLETRIGGER, SETTABLEREMARKS, DROPTRIGGER, DROPCOLUMN, DROPPROCEDURE, SQL, EXECUTECOMMAND, ADDCHECKCONSTRAINT, CREATEVIEW, DROPFUNCTION, CREATETABLE, DROPPACKAGEBODY, ENABLECHECKCONSTRAINT, LOADUPDATEDATA, CLONETABLE, CUSTOMCHANGE, DROPSYNONYM, INSERT, DROPDEFAULTVALUE, ADDCOLUMN, CREATEPROCEDURE, LOADDATA, CREATEINDEX, DROPALLFOREIGNKEYCONSTRAINTS, CREATEPACKAGEBODY, CREATESYNONYM, DISABLETRIGGER, DELETE, DROPVOLUME, RENAMESEQUENCE, ADDDEFAULTVALUE, DROPPRIMARYKEY, ALTERCLUSTER, OPTIMIZETABLE, UPDATE, MODIFYDATATYPE, ADDFOREIGNKEYCONSTRAINT, DROPCHECKCONSTRAINT, EMPTY, SYNCIDENTITYCOLUMN, MARKUNUSED, ALTERSEQUENCE, ADDAUTOINCREMENT, RENAMECOLUMN, ANALYZETABLE, ADDLOOKUPTABLE, DROPVIEW, CREATEPACKAGE, ADDPRIMARYKEY, RENAMETABLE>
 ##    COLUMN_NAME: <non-empty string>
-##    COMMAND: <non-empty string>
 ##    CONSTRAINT: <NOT_NULL, UNIQUE, PRIMARYKEY, FOREIGNKEY, DEFAULT>
 ##    CONSTRAINT_OPERATOR: <STARTS_WITH, ENDS_WITH, CONTAINS, REGEXP, ALL>
-##    DBMS: <DYNAMODB, MONGODB>
+##    DBMS: <DYNAMODB>
 ##    DEFAULTS_FILENAME: <valid filename>
 ##    DELETION_PROTECTION_ENABLED: <true,false>
-##    DOCUMENT: <non-empty string>
-##    DOCUMENTS: <non-empty string>
 ##    DYNAMO_CHANGE_TYPE: <CREATE_GLOBAL_SECONDARY_INDEX, PARTIQL, PARTIQL_FILE, DELETE_DYNAMO_TABLE, CREATE_DYNAMO_TABLE, UPDATE_TABLE_PROVISIONED_THROUGHPUT, UPDATE_DYNAMO_TABLE, UPDATE_GLOBAL_SECONDARY_INDEX, DELETE_GLOBAL_SECONDARY_INDEX>
 ##    ENCODING: <non-empty string>
 ##    END_DELIMITER: <non-empty string>
 ##    EXCEPTIONS_LIST: <comma-separated list>
 ##    INDEX_NAME: <non-empty string>
 ##    JDBC_URL: <non-empty string>
-##    KEYS: <non-empty string>
 ##    KEY_SCHEMA_HASH_NAME: <non-empty string>
 ##    KEY_SCHEMA_RANGE_NAME: <non-empty string>
 ##    LOGIC_CONDITIONAL: <non-empty string>
@@ -40,14 +35,11 @@
 ##    MAX_COLUMNS: <positive numeric value>
 ##    MAX_ROWS: <positive numeric value>
 ##    MESSAGE: <non-empty string>
-##    MONGO_CHANGE_TYPE: <INSERT_ONE, INSERT_MANY, CREATE_COLLECTION, CREATE_INDEX, DROP_INDEX, MONGO_FILE>
 ##    NEGATIVE_LOOKAHEAD_MESSAGE: <non-empty string>
 ##    NEGATIVE_LOOKBEHIND_MESSAGE: <non-empty string>
 ##    OBJECT_TYPES: <TABLE, COLUMN, SEQUENCE, INDEX, SCHEMA>
 ##    OPERATOR: <STARTS_WITH, ENDS_WITH, CONTAINS, REGEXP, EQUALS>
-##    OPTIONS: <string>
 ##    PASSWORD: <non-empty string>
-##    PATH: <non-empty string>
 ##    PATH_FILTER_REGEX: <RegexGetter>
 ##    PATTERN_A: <a string, or a valid regular expression>
 ##    PATTERN_B: <a string, or a valid regular expression>
@@ -65,26 +57,25 @@
 ##    SCRIPT_ARGS: <a list of arguments, i.e key1="value1", key2="value2">
 ##    SCRIPT_DESCRIPTION: <string>
 ##    SCRIPT_MESSAGE: <string>
-##    SCRIPT_PATH: <a relative or absolute file path>
+##    SCRIPT_PATH: <a relative file path>
 ##    SCRIPT_SCOPE: <changelog, database>
 ##    SCRIPT_TYPE: <PYTHON>
 ##    SEARCH_STRING: <a string, or a valid regular expression>
 ##    SPLIT_STATEMENTS: <true, false>
-##    SQL_FILE_EXCEPTIONS_LIST: <comma-separated list>
 ##    STRIP_COMMENTS: <true, false>
 ##    TABLE_CLASS: <STANDARD, STANDARD_INFREQUENT_ACCESS>
 ##    TABLE_NAME: <string>
 ##    USERNAME: <non-empty string>
 
 fileCreated: 2025-08-14T07:55:08.014Z
-fileModified: 2025-09-11T07:03:58.188Z
+fileModified: 2025-08-14T07:55:08.014Z
 rules:
 - description: This check warns a user when SQL contains 'GRANT' statements so that
     they can ensure that the privilege being granted won't lead to security issues.
   enabled: true
   id: '38fc7edf-9a60-3d00-8b40-23c7e719745f'
   name: Warn on Detection of 'GRANT' Statements
-  severity: '3'
+  severity: '0'
   shortName: SqlGrantWarn
 - description: This check warns a user when SQL contains 'REVOKE' statements so that
     they can ensure that the privilege being revoked won't lead to data access and
@@ -92,14 +83,14 @@ rules:
   enabled: true
   id: '0b73828f-2e8d-3c36-b1c3-7153bcb6f160'
   name: Warn on Detection of 'REVOKE' Statements
-  severity: '1'
+  severity: '0'
   shortName: SqlRevokeWarn
 - description: This check warns a user when generated or raw SQL contains 'USE DATABASE'
     directive.
   enabled: true
   id: '9197d8c1-86e7-3277-b3d9-677c2f2b4213'
   name: Warn on Detection of 'USE DATABASE' statements
-  severity: '2'
+  severity: '0'
   shortName: WarnOnUseDatabase
 - description: This check warns a user when a table is being dropped so that they
     can ensure that dropping the table won't lead to unintentional loss of data.
@@ -121,7 +112,7 @@ rules:
   enabled: true
   id: 'e98e0a4d-0582-360b-a89f-37b2f65e65d2'
   name: Warn when 'MODIFY <column>' detected
-  severity: '3'
+  severity: '0'
   shortName: ModifyDataTypeWarn
 - description: This check warns a user when generated or raw SQL contains 'SELECT
     *' statements so that they can ensure  selecting all fields from a table in a
@@ -129,7 +120,7 @@ rules:
   enabled: true
   id: 'b36ff4e4-b647-3bfa-b73f-33c7a588c567'
   name: Warn on Detection of 'SELECT *'
-  severity: '1'
+  severity: '0'
   shortName: SqlSelectStarWarn
 - description: This check scans SQL for the presence of specific patterns in specified
     changelog paths, and warns the user when they are found.
@@ -259,7 +250,7 @@ rules:
   - parameter: MAX_COLUMNS
     value: 50
   parentRuleId: null
-  severity: '2'
+  severity: '0'
   shortName: TableColumnLimit
 - description: This checks triggers when the Max Affected Rows Allowed value is exceeded
     by the number of rows DELETED by a SQL statement.  The SQL statement is executed
@@ -274,7 +265,7 @@ rules:
     value: <AFFECTED_ROWS> rows will be affected, which is more than the allowed '<THRESHOLD>'
       rows. The SQL statement is '<STATEMENT>' in '<CHANGESET>'.
   parentRuleId: null
-  severity: '3'
+  severity: '0'
   shortName: MaxAffectedRowsAllowedDelete
 - description: This checks triggers when the Max Affected Rows Allowed value is exceeded
     by the number of rows INSERTED by a SQL statement.  The SQL statement is executed
@@ -289,7 +280,7 @@ rules:
     value: <AFFECTED_ROWS> rows will be affected, which is more than the allowed '<THRESHOLD>'
       rows. The SQL statement is '<STATEMENT>' in '<CHANGESET>'.
   parentRuleId: null
-  severity: '2'
+  severity: '0'
   shortName: MaxAffectedRowsAllowedInsert
 - description: This checks triggers when the Max Affected Rows Allowed value is exceeded
     by the number of rows UPDATED by a SQL statement.  The SQL statement is executed
@@ -304,7 +295,7 @@ rules:
     value: <AFFECTED_ROWS> rows will be affected, which is more than the allowed '<THRESHOLD>'
       rows. The SQL statement is '<STATEMENT>' in '<CHANGESET>'.
   parentRuleId: null
-  severity: '2'
+  severity: '0'
   shortName: MaxAffectedRowsAllowedUpdate
 - description: This check confirms the listed object names conform to the supplied
     pattern.
@@ -388,14 +379,14 @@ rules:
     value: A match for regular expression <SEARCH_STRING> was detected in Changeset
       <CHANGESET>.
   parentRuleId: null
-  severity: '2'
+  severity: '0'
   shortName: CheckRunInTransactionValue
 - description: This check warns a user when a table is being truncated so that they
     can ensure that truncating the table won't lead to unintentional loss of data.
   enabled: true
   id: '136bed9a-17c5-3edc-b1e7-30065052e859'
   name: Warn when 'TRUNCATE TABLE' detected
-  severity: '3'
+  severity: '0'
   shortName: ChangeTruncateTableWarn
 - description: This check warns a user when SQL contains 'GRANT' statements that include
     the 'WITH GRANT OPTION' clause so that they can ensure that the privilege being
@@ -403,7 +394,7 @@ rules:
   enabled: true
   id: '892b5881-6d02-3846-bdf0-c8538e7b013f'
   name: Warn on Detection of grant that contains 'WITH GRANT OPTION'
-  severity: '4'
+  severity: '0'
   shortName: SqlGrantOptionWarn
 - description: Disallow Oracle reserved keywords from being used in database object
     names. See https://docs.oracle.com/cd/B19306_01/em.102/b40103/app_oracle_reserved_words.htm
@@ -507,7 +498,7 @@ rules:
   enabled: true
   id: 'a85a72fd-9d93-33cd-bbdb-59f21538af9d'
   name: Warn on Detection of grant that contains 'WITH ADMIN OPTION'
-  severity: '4'
+  severity: '0'
   shortName: SqlGrantAdminWarn
 - description: This check warns a user when a ChangeSet includes a ChangeType listed
     by the user as forbidden
@@ -518,13 +509,13 @@ rules:
   - parameter: CHANGE_TYPE_LIST
     value: dropTable,dropColumn
   parentRuleId: null
-  severity: '4'
+  severity: '0'
   shortName: DetectChangeType
 - description: This check triggers when a changeset does not have a rollback defined.
   enabled: true
   id: 'd517b518-8a6f-3084-a5be-97e7d89c6860'
   name: Rollback Required for Changeset
-  severity: '3'
+  severity: '0'
   shortName: RollbackRequired
 - description: This check enforces the Liquibase recommendation that labels be assigned
     to each changeset to provide better deployment control and to enhance traceability
@@ -532,7 +523,7 @@ rules:
   enabled: true
   id: '00da80be-8adf-3c05-9380-b2538ae3015a'
   name: Changesets Must Have a Label Assigned
-  severity: '3'
+  severity: '0'
   shortName: ChangesetLabelCheck
 - description: This check enforces the Liquibase recommendation that contexts be assigned
     to each changeset to provide better deployment control and to enhance traceability
@@ -540,7 +531,7 @@ rules:
   enabled: true
   id: 'e56b7a4a-5953-3be3-96d2-0814eb8e7a02'
   name: Changesets Must Have a Context Assigned
-  severity: '2'
+  severity: '0'
   shortName: ChangesetContextCheck
 - description: This check enforces the Liquibase recommendation that comments be added
     to each changeset to document the purpose of a changeset for other/future consumers
@@ -548,14 +539,14 @@ rules:
   enabled: true
   id: '517fcf2f-769c-3916-af1c-4c6aeef37914'
   name: Changesets Must Have a Comment Assigned
-  severity: '1'
+  severity: '0'
   shortName: ChangesetCommentCheck
 - description: This check enforces the Liquibase Best Practice of keeping individual
     changesets small by limiting them to one statement or change.
   enabled: true
   id: '2b02222f-32cf-3761-add0-9615b821678f'
   name: One Change Per Changeset
-  severity: '2'
+  severity: '0'
   shortName: OneChangePerChangeset
 - description: This check confirms that a specific label or a label that matches a
     specific pattern is present on all changesets.
@@ -594,14 +585,14 @@ rules:
   - parameter: CASE_SENSITIVE
     value: true
   parentRuleId: null
-  severity: '3'
+  severity: '0'
   shortName: PrimaryKeyOnCreateTable
 - description: This check scans your target URL database tables to find tables which
     do not have an associated index.
   enabled: true
   id: 'b945447e-9e2a-3422-b40c-543d7505568a'
   name: Table must have an index
-  severity: '2'
+  severity: '0'
   shortName: CheckTablesForIndex
 - description: 'With database-scope, this check flags any table which does not have
     a comment. With changelog-scope, this check triggers on changesets with a CREATE
@@ -720,26 +711,4 @@ rules:
   parentRuleId: null
   severity: '0'
   shortName: DynamoChangetypeAttributes
-- description: ' This check triggers when a changelog does not start with the required
-    ''--liquibase formatted sql'' header.'
-  enabled: false
-  id: 'c0d4fc4f-3e1f-3281-92c7-c18c63eb4865'
-  name: Check for Formatted SQL header
-  parameters:
-  - parameter: SQL_FILE_EXCEPTIONS_LIST
-    value: ''
-  parentRuleId: null
-  severity: '0'
-  shortName: FormattedSqlHeaderRequired
-- description: This check triggers when Mongo changetype attributes do not match the
-    user-supplied string or regex pattern.
-  enabled: false
-  id: '17313e6f-e5ac-3592-b213-3df1344a1240'
-  name: Mongo changetype attributes
-  parameters:
-  - parameter: MONGO_CHANGE_TYPE
-    value: null
-  parentRuleId: null
-  severity: '0'
-  shortName: MongoChangetypeAttributes
 version: '1.1'

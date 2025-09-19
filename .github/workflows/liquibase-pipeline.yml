@@ -1,70 +1,216 @@
-name: Liquibase Pipeline (Flow-based)
+name: Liquibase Compliance Pipeline (Flow-based)
+
+run-name: "Liquibase ➜ ${{ inputs.target }} • compliance=${{ inputs.compliance_mode }} • drift=${{ inputs.drift_mode }} • by @${{ github.actor }}"
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Environment to run'
+        description: 'Target environment'
         required: true
         type: choice
         options: [dev, test, prod, all]
         default: dev
-      policies:
-        description: 'Run policies (checks run)?'
+      compliance_mode:
+        description: 'Policy checks: enforce (fail), observe (log), or off'
         required: true
         type: choice
-        options: [on, off]
-        default: on
-      snapshot:
-        description: 'Run snapshot (basic)?'
+        options: [enforce, observe, off]
+        default: enforce
+      drift_mode:
+        description: 'Drift detection: required (fail on drift), observe (log), or off'
         required: true
         type: choice
-        options: [on, off]
-        default: on
+        options: [required, observe, off]
+        default: required
+
+permissions:
+  contents: read
+  id-token: write     # OIDC for cloud secret managers if you use them
+  actions: read
+
+concurrency:
+  group: liquibase-${{ github.workflow }}-${{ inputs.target }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: self-hosted   # Liquibase already installed on your runner
+    runs-on: self-hosted
     strategy:
       matrix:
         env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
+
+    environment: ${{ matrix.env }}   # approvals & env-scoped secrets
 
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
-      LB_USER:  postgres
-      LB_PWD:   secret
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pick target URL
+      - name: Select target URL
         id: envmap
         shell: bash
         run: |
           set -euo pipefail
           case "${{ matrix.env }}" in
-            dev)  LB_URL="${{ env.DEV_URL }}";;
-            test) LB_URL="${{ env.TEST_URL }}";;
-            prod) LB_URL="${{ env.PROD_URL }}";;
+            dev)  LB_URL="${{ env.DEV_URL }}"; REF_URL="";;                 # no upstream
+            test) LB_URL="${{ env.TEST_URL }}"; REF_URL="${{ env.DEV_URL }}";;
+            prod) LB_URL="${{ env.PROD_URL }}"; REF_URL="${{ env.TEST_URL }}";;
             *) echo "Unknown env '${{ matrix.env }}'"; exit 1;;
           esac
-          echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
+          {
+            echo "LB_URL=$LB_URL"
+            echo "REF_URL=$REF_URL"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Run flow (policies/snapshot toggled by inputs)
+      - name: Guardrails — prod only from main
+        if: ${{ matrix.env == 'prod' && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "Only 'main' may deploy to prod." >&2
+          exit 1
+
+      - name: Guardrails — cannot disable checks/drift in prod
+        if: ${{ matrix.env == 'prod' && (inputs.compliance_mode == 'off' || inputs.drift_mode == 'off') }}
+        run: |
+          echo "Compliance checks and drift detection cannot be disabled for prod." >&2
+          exit 1
+
+      # OPTIONAL: OIDC→AWS for Secrets Manager (commented; enable if you use it)
+      # - name: Configure AWS credentials
+      #   if: ${{ vars.AWS_ROLE_TO_ASSUME && vars.AWS_REGION }}
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+      #     aws-region: ${{ vars.AWS_REGION }}
+      #
+      # - name: Fetch DB creds from AWS Secrets Manager
+      #   if: ${{ vars.AWS_DB_SECRET_ID }}
+      #   id: awscreds
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     payload="$(aws secretsmanager get-secret-value --secret-id "${{ vars.AWS_DB_SECRET_ID }}" --query SecretString --output text)"
+      #     user="$(python3 - <<'PY'\nimport json,sys;print(json.loads(sys.stdin.read())['username'])\nPY <<<"$payload")"
+      #     pwd="$(python3 - <<'PY'\nimport json,sys;print(json.loads(sys.stdin.read())['password'])\nPY <<<"$payload")"
+      #     echo "LB_USER=$user" >> "$GITHUB_OUTPUT"
+      #     echo "LB_PWD=$pwd"   >> "$GITHUB_OUTPUT"
+
+      - name: Prepare evidence folders
+        shell: bash
+        run: mkdir -p compliance audit
+
+      - name: Preflight — validate changelog
         shell: bash
         env:
-          # Consumed by your flow file
-          LB_URL:        ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER:       ${{ env.LB_USER }}
-          LB_PWD:        ${{ env.LB_PWD }}
-          DEV_URL:       ${{ env.DEV_URL }}
-          TEST_URL:      ${{ env.TEST_URL }}
-          RUN_POLICIES:  ${{ inputs.policies }}   # on/off
-          RUN_SNAPSHOT:  ${{ inputs.snapshot }}   # on/off
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
+          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
         run: |
           set -euo pipefail
-          liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" flow
+          liquibase --log-file=compliance/validate.log validate
+
+      - name: Compliance checks (Liquibase Pro)
+        if: ${{ inputs.compliance_mode != 'off' }}
+        continue-on-error: ${{ inputs.compliance_mode == 'observe' }}
+        shell: bash
+        env:
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
+          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+        run: |
+          set -euo pipefail
+          liquibase --log-file=compliance/checks.log checks run | tee compliance/checks.txt
+
+      - name: Run flow (deploy)
+        shell: bash
+        env:
+          LB_URL:        ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER:       ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
+          LB_PWD:        ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+          DEV_URL:       ${{ env.DEV_URL }}
+          TEST_URL:      ${{ env.TEST_URL }}
+          RUN_POLICIES:  ${{ inputs.compliance_mode == 'off' && 'off' || 'on' }}
+        run: |
+          set -euo pipefail
+          liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
+                    --log-level=info \
+                    --log-file=compliance/flow.log \
+                    flow
           # If your flow file has a non-default name, add: --flow-file=liquibase.flowfile.yaml
+
+      # ---- Drift detection (post-deploy) ----
+      - name: Drift detection — diff vs upstream env
+        id: drift
+        if: ${{ inputs.drift_mode != 'off' && steps.envmap.outputs.REF_URL != '' }}
+        shell: bash
+        env:
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          REF_URL: ${{ steps.envmap.outputs.REF_URL }}
+          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
+          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+        run: |
+          set +e
+          liquibase --referenceUrl="$REF_URL" --url="$LB_URL" diff | tee "compliance/drift-${{ matrix.env }}.txt"
+          # Basic heuristic: look for common diff headers
+          if grep -Eiq 'Missing:|Unexpected:|Changed:' "compliance/drift-${{ matrix.env }}.txt"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          set -e
+
+      - name: Enforce drift policy
+        if: ${{ steps.drift.outputs.found == 'true' && inputs.drift_mode == 'required' }}
+        run: |
+          echo "Schema drift detected relative to upstream environment. Failing run (drift_mode=required)." >&2
+          exit 1
+
+      # ---- Audit artifacts ----
+      - name: Audit — execution history
+        shell: bash
+        env:
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
+          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+        run: |
+          set -euo pipefail
+          liquibase history > "audit/history-${{ matrix.env }}.txt" || true
+
+      - name: Audit — database documentation (db-doc)
+        shell: bash
+        env:
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
+          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+        run: |
+          set -euo pipefail
+          liquibase db-doc "audit/db-doc-${{ matrix.env }}"
+
+      - name: Publish artifacts (compliance, drift, audit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: "liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}"
+          path: |
+            compliance/
+            audit/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Run summary
+        shell: bash
+        run: |
+          {
+            echo "### Liquibase ${{ matrix.env }} deployment"
+            echo "- Compliance mode: **${{ inputs.compliance_mode }}**"
+            echo "- Drift mode: **${{ inputs.drift_mode }}**"
+            if [ "${{ steps.drift.outputs.found || 'false' }}" = "true" ]; then
+              echo "- Drift: **detected** (see drift report in artifacts)"
+            elif [ "${{ inputs.drift_mode }}" != "off" ] && [ "${{ matrix.env }}" != "dev" ]; then
+              echo "- Drift: **none detected**"
+            fi
+            echo "- Evidence artifact: **liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}**"
+          } >> "$GITHUB_STEP_SUMMARY"

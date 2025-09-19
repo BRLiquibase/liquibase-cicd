@@ -1,0 +1,63 @@
+# azure-pipelines-diff.yml
+trigger: none
+pr: none
+
+pool:
+  name: Local     # your self-hosted pool
+
+# optional picker: choose which pair to compare (defaults to dev→test)
+parameters:
+- name: pair
+  displayName: "Compare & apply pair"
+  type: string
+  default: dev-test
+  values:
+  - dev-test
+
+variables:
+# --- constants you can tweak ---
+- name: FLOW_FILE
+  value: diff-flow.flowfile.yaml
+- name: DIFF_CHANGELOG
+  value: out/diff-changelog.sql
+- name: DIFF_TYPES
+  value: tables,views,columns,primaryKeys,uniqueConstraints,indexes,foreignKeys,sequences,checkConstraints
+- name: LB_USER
+  value: postgres
+
+# JDBC endpoints (edit to match your environment)
+- name: DEV_URL
+  value: 'jdbc:postgresql://localhost:5433/postgres'
+- name: TEST_URL
+  value: 'jdbc:postgresql://localhost:5434/postgres'
+
+steps:
+- checkout: self
+
+# Show what we're about to do
+- bash: |
+    echo "PAIR             : ${{ parameters.pair }}"
+    echo "DEV_URL (ref)    : $(DEV_URL)"
+    echo "TEST_URL (target): $(TEST_URL)"
+    echo "DIFF_CHANGELOG   : $(DIFF_CHANGELOG)"
+  displayName: Echo config
+
+# Run the diff flow (diff-changelog → update)
+- script: |
+    liquibase flow --flow-file=$(FLOW_FILE)
+  displayName: Run diff & apply to TEST
+  env:
+    LB_USER: $(LB_USER)
+    LB_PWD: $(LB_PWD)              # set this as a SECRET variable in the pipeline UI
+    DEV_URL: $(DEV_URL)
+    TEST_URL: $(TEST_URL)
+    DIFF_CHANGELOG: $(DIFF_CHANGELOG)
+    DIFF_TYPES: $(DIFF_TYPES)
+
+# Publish the generated diff file so you can download it from the run
+- task: PublishBuildArtifacts@1
+  displayName: Publish diff changelog
+  inputs:
+    PathtoPublish: $(DIFF_CHANGELOG)
+    ArtifactName: diff-changelog
+    publishLocation: Container
