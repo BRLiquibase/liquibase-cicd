@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset chaos:001
+--changeset james.bennett:001
 -- no comment/context/labels; NO ROLLBACK  -> RollbackRequired
 CREATE TABLE customers (
     id          BIGSERIAL PRIMARY KEY,
@@ -11,7 +11,7 @@ CREATE TABLE customers (
     dob         DATE       -- PII-ish
 );
 
---changeset chaos:002
+--changeset james.bennett:002
 -- NO ROLLBACK; very wide table -> TableColumnLimit
 CREATE TABLE way_too_wide (
     id BIGSERIAL PRIMARY KEY,
@@ -23,28 +23,28 @@ CREATE TABLE way_too_wide (
     c051 INT, c052 INT, c053 INT, c054 INT, c055 INT, c056 INT, c057 INT, c058 INT, c059 INT, c060 INT
 );
 
---changeset chaos:003
+--changeset james.bennett:003
 -- multiple statements in one set; NO ROLLBACK
 -- ChangeDropColumnWarn (drop column)
 ALTER TABLE customers ADD COLUMN temp_col TEXT;
 ALTER TABLE customers DROP COLUMN temp_col;
 
---changeset chaos:004
+--changeset james.bennett:004
 -- NO ROLLBACK -> ChangeDropTableWarn
 DROP TABLE IF EXISTS way_too_wide;
 
---changeset chaos:005
+--changeset ben.riley:005
 -- NO ROLLBACK -> ChangeTruncateTableWarn
 CREATE TABLE scratch (id BIGSERIAL PRIMARY KEY, note TEXT);
 TRUNCATE TABLE scratch;
 
---changeset chaos:006
+--changeset ben.riley:006
 -- NO ROLLBACK -> ModifyDataTypeWarn
 ALTER TABLE customers
     ALTER COLUMN first_name TYPE VARCHAR(10),
     ALTER COLUMN last_name  TYPE VARCHAR(10);
 
---changeset chaos:007
+--changeset ben.riley:007
 -- GRANT patterns -> SqlGrantWarn / SqlGrantOptionWarn / SqlGrantAdminWarn
 -- NO ROLLBACK
 DO $$ BEGIN
@@ -56,18 +56,18 @@ END $$;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO app_writer WITH GRANT OPTION;  -- grant option
 GRANT app_writer TO postgres WITH ADMIN OPTION;                                              -- admin option
 
---changeset chaos:008
+--changeset ben.riley:008
 -- REVOKE pattern -> SqlRevokeWarn
 -- NO ROLLBACK
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 
---changeset chaos:009
+--changeset ben.riley:009
 -- SELECT * pattern -> SqlSelectStarWarn
 -- NO ROLLBACK
 -- (Liquibase will run it as a raw SQL change; it’s intentionally useless)
 SELECT * FROM customers;
 
---changeset chaos:010 runInTransaction:false
+--changeset ben.riley:010 runInTransaction:false
 -- Explicitly disabling transactions -> CheckRunInTransactionValue (warn)
 -- NO ROLLBACK
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_customers_email ON customers (email);
