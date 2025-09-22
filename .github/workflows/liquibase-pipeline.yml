@@ -12,7 +12,7 @@ on:
       run_audit:
         description: "Run audits?"
         required: true
-        type: choice         # supports on/off; we'll normalize below
+        type: choice
         options: [on, off]
         default: on
       run_drift:
@@ -85,6 +85,14 @@ jobs:
           echo "RUN_AUDIT=$(norm '${{ inputs.run_audit }}')"       >> $GITHUB_ENV
           echo "RUN_DRIFT=$(norm '${{ inputs.run_drift }}')"       >> $GITHUB_ENV
           echo "RUN_POLICIES=$(norm '${{ inputs.run_policies }}')" >> $GITHUB_ENV
+
+      # NEW: export creds & reference URL for the flow's 'diff' step
+      - name: Export connection env for Flow
+        shell: bash
+        run: |
+          echo "LB_USER=${{ secrets.DB_USER }}" >> $GITHUB_ENV
+          echo "LB_PWD=${{ secrets.DB_PWD }}"   >> $GITHUB_ENV
+          echo "TEST_URL=${{ env.TEST_URL }}"   >> $GITHUB_ENV
 
       - name: Run Liquibase flow
         shell: bash
