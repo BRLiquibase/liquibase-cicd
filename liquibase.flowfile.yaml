@@ -1,46 +1,60 @@
-# liquibase.flowfile.yaml
-# Toggles: RUN_AUDIT, RUN_DRIFT, RUN_POLICIES -> on/off/true/false/1/0
-# Primary DB (target) comes from liquibase.properties (url=username=password there).
-# Reference DB for diff comes from TEST_URL + LB_USER/LB_PWD env vars.
-# liquibase.flowfile.yaml (only the diff action + new globals shown)
+# Flow toggles come from env:
+#   RUN_AUDIT, RUN_DRIFT, RUN_POLICIES -> on/off
+# Connections come from env:
+#   Target:   LB_URL, LB_USER, LB_PASSWORD
+#   Reference (diff): TEST_URL (uses same LB_USER/LB_PASSWORD)
 
 globalVariables:
   RUN_AUDIT:      "${RUN_AUDIT:-on}"
   RUN_DRIFT:      "${RUN_DRIFT:-on}"
   RUN_POLICIES:   "${RUN_POLICIES:-on}"
   CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
-  TEST_URL:       "${TEST_URL:-}"
-  # NEW: separate reference creds, defaulting to LB_* so it works even if you don't set them
-  REF_DB_USER:    "${REF_DB_USER:-${LB_USER:-}}"
-  REF_DB_PWD:     "${REF_DB_PWD:-${LB_PWD:-}}"
+
+  LB_URL:       "${LB_URL:-}"
+  LB_USER:      "${LB_USER:-}"
+  LB_PASSWORD:  "${LB_PASSWORD:-}"
+  TEST_URL:     "${TEST_URL:-}"
 
 stages:
   Default:
     actions:
+      # 1) DIFF (optional). Non-blocking; delete continueOnError to gate the flow.
       - type: liquibase
-        if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == 'True' || RUN_DRIFT == '1'"
+        if: "RUN_DRIFT == 'on'"
         command: diff
         continueOnError: true
         cmdArgs:
-          reference-url:      "${TEST_URL}"
-          reference-username: "${REF_DB_USER}"
-          reference-password: "${REF_DB_PWD}"
-          # target side: still uses liquibase.properties, but we also pass creds explicitly
-          username:           "${LB_USER}"
-          password:           "${LB_PWD}"
+          url:                  "${LB_URL}"
+          username:             "${LB_USER}"
+          password:             "${LB_PASSWORD}"
+          reference-url:        "${TEST_URL}"
+          reference-username:   "${LB_USER}"
+          reference-password:   "${LB_PASSWORD}"
 
+      # 2) POLICIES (optional)
       - type: liquibase
-        if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == 'True' || RUN_POLICIES == '1'"
+        if: "RUN_POLICIES == 'on'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
 
+      # 3) AUDITS (optional): status + snapshot
       - type: liquibase
-        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == 'True' || RUN_AUDIT == '1'"
+        if: "RUN_AUDIT == 'on'"
         command: status
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
 
       - type: liquibase
-        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == 'True' || RUN_AUDIT == '1'"
+        if: "RUN_AUDIT == 'on'"
         command: snapshot
+        cmdArgs:
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
