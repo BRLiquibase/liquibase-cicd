@@ -1,22 +1,28 @@
-name: Liquibase Compliance Pipeline (Flow-based)
+name: Liquibase Simple Pipeline
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Target environment'
+        description: "Target environment"
         required: true
         type: choice
-        options: [dev, test, prod, all]
+        options: [dev, test, prod]
         default: dev
-      compliance_mode:
-        description: 'Compliance: enforce (fail), observe (log), or off'
+      run_audit:
+        description: "Run audits?"
         required: true
         type: choice
-        options: [enforce, observe, off]
-        default: enforce
-      evidence_snapshot:
-        description: 'Capture post-deploy snapshot?'
+        options: [on, off]
+        default: on
+      run_drift:
+        description: "Run drift?"
+        required: true
+        type: choice
+        options: [on, off]
+        default: on
+      run_policies:
+        description: "Run policies (checks)?"
         required: true
         type: choice
         options: [on, off]
@@ -24,22 +30,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  actions: read
-
-concurrency:
-  group: liquibase-${{ github.workflow }}-${{ inputs.target }}
-  cancel-in-progress: false
 
 jobs:
-  deploy:
+  liquibase:
     runs-on: self-hosted
-    strategy:
-      matrix:
-        env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
 
-    environment: ${{ matrix.env }}
-
+    # Example URLs — replace with your own or pull from GitHub Environments
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
@@ -52,14 +48,12 @@ jobs:
         id: envmap
         shell: bash
         run: |
-          set -euo pipefail
-          case "${{ matrix.env }}" in
-            dev)  LB_URL="${{ env.DEV_URL }}";;
-            test) LB_URL="${{ env.TEST_URL }}";;
-            prod) LB_URL="${{ env.PROD_URL }}";;
-            *) echo "Unknown env '${{ matrix.env }}'"; exit 1;;
+          case "${{ inputs.target }}" in
+            dev)  echo "LB_URL=${{ env.DEV_URL }}"  >> $GITHUB_OUTPUT;;
+            test) echo "LB_URL=${{ env.TEST_URL }}" >> $GITHUB_OUTPUT;;
+            prod) echo "LB_URL=${{ env.PROD_URL }}" >> $GITHUB_OUTPUT;;
+            *)    echo "Unknown target"; exit 1;;
           esac
-          echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
 
       - name: Write liquibase.properties
         shell: bash
@@ -74,22 +68,14 @@ jobs:
           password=${LB_PWD}
           EOF
 
-      # Map inputs to flow env toggles
-      - name: Set compliance env
-        id: toggles
+      - name: Export toggles for Flow
         shell: bash
         run: |
-          case "${{ inputs.compliance_mode }}" in
-            enforce) echo "RUN_POLICIES=on"          >> $GITHUB_ENV; echo "POLICY_ENFORCE=true"  >> $GITHUB_ENV;;
-            observe) echo "RUN_POLICIES=on"          >> $GITHUB_ENV; echo "POLICY_ENFORCE=false" >> $GITHUB_ENV;;
-            off)     echo "RUN_POLICIES=off"         >> $GITHUB_ENV; echo "POLICY_ENFORCE=false" >> $GITHUB_ENV;;
-          esac
-          echo "RUN_SNAPSHOT=${{ inputs.evidence_snapshot }}" >> $GITHUB_ENV
-          echo "LIQUIBASE_ENV=${{ matrix.env }}"               >> $GITHUB_ENV
+          echo "RUN_AUDIT=${{ inputs.run_audit }}"     >> $GITHUB_ENV
+          echo "RUN_DRIFT=${{ inputs.run_drift }}"     >> $GITHUB_ENV
+          echo "RUN_POLICIES=${{ inputs.run_policies }}" >> $GITHUB_ENV
 
-      # One command: flow handles drift -> policies -> deploy -> snapshot
-      - name: Run compliance flow
+      - name: Run Liquibase flow
         shell: bash
         run: |
-          liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
-                    flow --flow-file=liquibase.flowfile.yaml
+          liquibase flow --flow-file=liquibase.flowfile.yaml

@@ -1,67 +1,45 @@
-# liquibase.flowfile.yaml
-# Order: diff(dev→test) → (optionally) checks → snapshot → update → status
-# Resolves DB connection values from environment first, then falls back to liquibase.properties.
+# Minimal flow file that runs/skip steps based on env toggles:
+#   RUN_AUDIT:   on/off
+#   RUN_DRIFT:   on/off
+#   RUN_POLICIES:on/off
+# Connection details come from liquibase.properties
 
 globalVariables:
-  # Use env if present, otherwise fall back to properties file values
-  LB_URL:    "${LB_URL:-${url}}"
-  LB_USER:   "${LB_USER:-${username}}"
-  LB_PWD:    "${LB_PWD:-${password}}"
-  DEV_URL:   "${DEV_URL:-null}"
-  TEST_URL:  "${TEST_URL:-null}"
-
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
-  RUN_POLICIES:   "${RUN_POLICIES:-on}"   # on/off/true/false/1/0
-  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # on/off/true/false/1/0
+  RUN_AUDIT:    "${RUN_AUDIT:-on}"
+  RUN_DRIFT:    "${RUN_DRIFT:-on}"
+  RUN_POLICIES: "${RUN_POLICIES:-on}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
 
 stages:
   Default:
     actions:
-      # 1) Diff dev -> test (FIRST; non-blocking so it never stops the pipeline)
+      # 1) Drift (optional)
       - type: liquibase
-        command: diff
+        if: "RUN_DRIFT == 'on'"
+        command: drift
+        # Non-blocking drift; remove this if you want drift failures to stop the flow
         continueOnError: true
-        cmdArgs:
-          reference-url:      "${DEV_URL}"
-          reference-username: "${LB_USER}"
-          reference-password: "${LB_PWD}"
-          url:                "${TEST_URL}"
-          username:           "${LB_USER}"
-          password:           "${LB_PWD}"
 
-      # 2) Policy checks (only if enabled)
+      # 2) Policies / checks (optional)
       - type: liquibase
-        if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == 'True' || RUN_POLICIES == '1'"
+        if: "RUN_POLICIES == 'on'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
-          url:            "${LB_URL}"
-          username:       "${LB_USER}"
-          password:       "${LB_PWD}"
 
-      # 3) Snapshot (optional)
+      # 3) Audits (optional): quick status + snapshot
       - type: liquibase
-        if: "RUN_SNAPSHOT == 'on' || RUN_SNAPSHOT == 'true' || RUN_SNAPSHOT == 'True' || RUN_SNAPSHOT == '1'"
-        command: snapshot
-        cmdArgs:
-          url:      "${LB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PWD}"
-
-      # 4) Update (always)
-      - type: liquibase
-        command: update
-        cmdArgs:
-          changelog-file: "${CHANGELOG_FILE}"
-          url:            "${LB_URL}"
-          username:       "${LB_USER}"
-          password:       "${LB_PWD}"
-
-      # 5) Status (always)
-      - type: liquibase
+        if: "RUN_AUDIT == 'on'"
         command: status
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
-          url:            "${LB_URL}"
-          username:       "${LB_USER}"
-          password:       "${LB_PWD}"
+
+      - type: liquibase
+        if: "RUN_AUDIT == 'on'"
+        command: snapshot
+
+      # 4) (Optional) Deploy — uncomment if you want an update as part of this flow
+      # - type: liquibase
+      #   command: update
+      #   cmdArgs:
+      #     changelog-file: "${CHANGELOG_FILE}"
