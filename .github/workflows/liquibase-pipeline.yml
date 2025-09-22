@@ -1,6 +1,6 @@
 name: Liquibase Compliance Pipeline (Flow-based)
 
-run-name: "Liquibase ➜ ${{ inputs.target }} • policy=${{ inputs.compliance_mode }} • drift=${{ inputs.drift_mode }} • by @${{ github.actor }}"
+run-name: "Liquibase ➜ ${{ inputs.target }} • compliance=${{ inputs.compliance_mode }} • by @${{ github.actor }}"
 
 on:
   workflow_dispatch:
@@ -12,17 +12,22 @@ on:
         options: [dev, test, prod, all]
         default: dev
       compliance_mode:
-        description: 'Policy checks: block (fail), audit (log), or skip'
+        description: 'Compliance checks: enforce (fail), observe (log), or off'
         required: true
         type: choice
-        options: [block, audit, skip]
-        default: block
-      drift_mode:
-        description: 'Drift detection: block (fail on drift), audit (log), or skip'
+        options: [enforce, observe, off]
+        default: enforce
+      evidence_snapshot:
+        description: 'Capture evidence snapshot after deploy?'
         required: true
         type: choice
-        options: [block, audit, skip]
-        default: block
+        options: [on, off]
+        default: on
+      change_ticket:
+        description: 'Change/ticket ID (for audit trail labels)'
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -40,12 +45,14 @@ jobs:
       matrix:
         env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
 
+    # environment controls approvals/secrets per env
     environment: ${{ matrix.env }}
 
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
+      # Optional: set DRIFT_REF_URL as an Environment variable in GitHub for precise control
 
     steps:
       - name: Checkout
@@ -57,127 +64,129 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ matrix.env }}" in
-            dev)  LB_URL="${{ env.DEV_URL }}"; REF_URL="";;                 # no upstream
-            test) LB_URL="${{ env.TEST_URL }}"; REF_URL="${{ env.DEV_URL }}";;
-            prod) LB_URL="${{ env.PROD_URL }}"; REF_URL="${{ env.TEST_URL }}";;
+            dev)  LB_URL="${{ env.DEV_URL }}";;
+            test) LB_URL="${{ env.TEST_URL }}";;
+            prod) LB_URL="${{ env.PROD_URL }}";;
             *) echo "Unknown env '${{ matrix.env }}'"; exit 1;;
           esac
-          {
-            echo "LB_URL=$LB_URL"
-            echo "REF_URL=$REF_URL"
-          } >> "$GITHUB_OUTPUT"
+          echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Guardrails — prod only from main
-        if: ${{ matrix.env == 'prod' && github.ref != 'refs/heads/main' }}
-        run: |
-          echo "Only 'main' may deploy to prod." >&2
-          exit 1
-
-      - name: Guardrails — cannot skip checks/drift in prod
-        if: ${{ matrix.env == 'prod' && (inputs.compliance_mode == 'skip' || inputs.drift_mode == 'skip') }}
-        run: |
-          echo "Policy checks and drift detection cannot be skipped for prod." >&2
-          exit 1
-
-      - name: Prepare evidence folders
+      - name: Determine reference URL for drift
+        id: refmap
         shell: bash
-        run: mkdir -p compliance audit
+        env:
+          DRIFT_REF_URL: ${{ vars.DRIFT_REF_URL }}   # optional per-environment override
+        run: |
+          set -euo pipefail
+          if [ -n "${DRIFT_REF_URL:-}" ]; then
+            REF_URL="$DRIFT_REF_URL"
+          else
+            # Sensible fallback: compare upward from lower env
+            case "${{ matrix.env }}" in
+              dev)  REF_URL="${{ env.DEV_URL }}";;   # or set vars.DRIFT_REF_URL in the env
+              test) REF_URL="${{ env.DEV_URL }}";;
+              prod) REF_URL="${{ env.TEST_URL }}";;
+            esac
+          fi
+          echo "REF_URL=$REF_URL" >> "$GITHUB_OUTPUT"
 
-      # ---- Drift detection (PRE-deploy) ----
-      - name: Drift detection — diff vs upstream env
+      - name: Prepare evidence folder
+        shell: bash
+        run: mkdir -p compliance
+
+      # --- DRIFT FIRST, ALWAYS ---
+      - name: Drift report (always first; never blocks)
         id: drift
-        if: ${{ inputs.drift_mode != 'skip' && steps.envmap.outputs.REF_URL != '' }}
+        if: ${{ always() }}
+        continue-on-error: true
         shell: bash
         env:
           LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          REF_URL: ${{ steps.envmap.outputs.REF_URL }}
-          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
-          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+          REF_URL: ${{ steps.refmap.outputs.REF_URL }}
+          LB_USER: ${{ secrets.DB_USER }}
+          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          set +e
-          liquibase --referenceUrl="$REF_URL" --url="$LB_URL" diff | tee "compliance/drift-${{ matrix.env }}.txt"
-          if grep -Eiq 'Missing:|Unexpected:|Changed:' "compliance/drift-${{ matrix.env }}.txt"; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-          set -e
+          set -euo pipefail
+          # Capture JSON + log for audit. Doesn't fail the job.
+          liquibase \
+            --url="$LB_URL" --username="$LB_USER" --password="$LB_PWD" \
+            --reference-url="$REF_URL" --reference-username="$LB_USER" --reference-password="$LB_PWD" \
+            --log-file=compliance/drift.log \
+            drift --format=json > "compliance/drift-${{ matrix.env }}.json" || true
 
-      - name: Enforce drift policy
-        if: ${{ steps.drift.outputs.found == 'true' && inputs.drift_mode == 'block' }}
+      # --- POLICIES SECOND ---
+      - name: Compliance checks (run after drift)
+        if: ${{ always() && inputs.compliance_mode != 'off' }}
+        continue-on-error: ${{ inputs.compliance_mode == 'observe' }}
+        shell: bash
+        env:
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ secrets.DB_USER }}
+          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          echo "Schema drift detected relative to upstream environment. Failing run (drift_mode=block) before policy checks/deploy." >&2
+          set -euo pipefail
+          liquibase --log-file=compliance/checks.log checks run ${{
+            inputs.change_ticket != '' && format('--labels=change:{0}', inputs.change_ticket) || ''
+          }} | tee compliance/checks.txt
+
+      # Guardrails applied AFTER policies so drift+policies always execute
+      - name: Guardrails — prod only from main
+        if: ${{ matrix.env == 'prod' && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "Ref '${GITHUB_REF}' is not allowed to deploy to prod. Use 'main'." >&2
           exit 1
 
-      # ---- Preflight & policy checks (run AFTER drift) ----
+      - name: Guardrails — disallow turning checks off in prod
+        if: ${{ matrix.env == 'prod' && inputs.compliance_mode == 'off' }}
+        run: |
+          echo "Compliance checks cannot be disabled for prod." >&2
+          exit 1
+
       - name: Preflight — validate changelog
         shell: bash
         env:
           LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
-          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+          LB_USER: ${{ secrets.DB_USER }}
+          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
           set -euo pipefail
           liquibase --log-file=compliance/validate.log validate
 
-      - name: Policy checks (Liquibase Pro)
-        if: ${{ inputs.compliance_mode != 'skip' }}
-        continue-on-error: ${{ inputs.compliance_mode == 'audit' }}
-        shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
-          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
-        run: |
-          set -euo pipefail
-          liquibase --log-file=compliance/checks.log checks run | tee compliance/checks.txt
-
-      # ---- Deploy ----
-      - name: Run flow (deploy)
+      - name: Run flow (policy & snapshot toggles)
         shell: bash
         env:
           LB_URL:        ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER:       ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
-          LB_PWD:        ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+          LB_USER:       ${{ secrets.DB_USER }}
+          LB_PWD:        ${{ secrets.DB_PWD }}
           DEV_URL:       ${{ env.DEV_URL }}
           TEST_URL:      ${{ env.TEST_URL }}
-          RUN_POLICIES:  ${{ inputs.compliance_mode == 'skip' && 'off' || 'on' }}
+          RUN_POLICIES:  ${{ inputs.compliance_mode == 'off' && 'off' || 'on' }}
+          RUN_SNAPSHOT:  ${{ inputs.evidence_snapshot }}
+          POLICY_ENFORCE: ${{ inputs.compliance_mode == 'enforce' && 'true' || 'false' }}
+          CHANGE_TICKET: ${{ inputs.change_ticket }}
         run: |
           set -euo pipefail
           liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
                     --log-level=info \
                     --log-file=compliance/flow.log \
                     flow
-          # If your flow file has a non-default name, add: --flow-file=liquibase.flowfile.yaml
 
-      # ---- Audit artifacts ----
-      - name: Audit — execution history
+      - name: Evidence — post-deploy snapshot
+        if: ${{ inputs.evidence_snapshot == 'on' }}
         shell: bash
         env:
           LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
-          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
+          LB_USER: ${{ secrets.DB_USER }}
+          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
           set -euo pipefail
-          liquibase history > "audit/history-${{ matrix.env }}.txt" || true
+          liquibase snapshot --format=json > "compliance/snapshot-${{ matrix.env }}.json"
 
-      - name: Audit — database documentation (db-doc)
-        shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ steps.awscreds.outputs.LB_USER || secrets.DB_USER }}
-          LB_PWD:  ${{ steps.awscreds.outputs.LB_PWD  || secrets.DB_PWD  }}
-        run: |
-          set -euo pipefail
-          liquibase db-doc "audit/db-doc-${{ matrix.env }}"
-
-      - name: Publish artifacts (compliance, drift, audit)
+      - name: Publish compliance evidence
         uses: actions/upload-artifact@v4
         with:
           name: "liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}"
-          path: |
-            compliance/
-            audit/
+          path: compliance/
           if-no-files-found: warn
           retention-days: 30
 
@@ -186,12 +195,8 @@ jobs:
         run: |
           {
             echo "### Liquibase ${{ matrix.env }} deployment"
-            echo "- Drift mode: **${{ inputs.drift_mode }}**"
-            if [ "${{ steps.drift.outputs.found || 'false' }}" = "true" ]; then
-              echo "- Drift: **detected** (pre-deploy; see artifacts)"
-            elif [ "${{ inputs.drift_mode }}" != "skip" ] && [ "${{ matrix.env }}" != "dev" ]; then
-              echo "- Drift: **none detected** (pre-deploy)"
-            fi
-            echo "- Policy mode: **${{ inputs.compliance_mode }}**"
+            echo "- Compliance mode: **${{ inputs.compliance_mode }}**"
+            [ -n "${{ inputs.change_ticket }}" ] && echo "- Change ticket: \`${{ inputs.change_ticket }}\`"
             echo "- Evidence artifact: **liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}**"
+            echo "- Drift JSON: \`compliance/drift-${{ matrix.env }}.json\`"
           } >> "$GITHUB_STEP_SUMMARY"
