@@ -2,40 +2,39 @@
 # Toggles: RUN_AUDIT, RUN_DRIFT, RUN_POLICIES -> on/off/true/false/1/0
 # Primary DB (target) comes from liquibase.properties (url=username=password there).
 # Reference DB for diff comes from TEST_URL + LB_USER/LB_PWD env vars.
+# liquibase.flowfile.yaml (only the diff action + new globals shown)
 
 globalVariables:
   RUN_AUDIT:      "${RUN_AUDIT:-on}"
   RUN_DRIFT:      "${RUN_DRIFT:-on}"
   RUN_POLICIES:   "${RUN_POLICIES:-on}"
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
   TEST_URL:       "${TEST_URL:-}"
-  LB_USER:        "${LB_USER:-}"
-  LB_PWD:         "${LB_PWD:-}"
+  # NEW: separate reference creds, defaulting to LB_* so it works even if you don't set them
+  REF_DB_USER:    "${REF_DB_USER:-${LB_USER:-}}"
+  REF_DB_PWD:     "${REF_DB_PWD:-${LB_PWD:-}}"
 
 stages:
   Default:
     actions:
-      # 1) DIFF (optional). Non-blocking; remove continueOnError to make it gate the flow.
       - type: liquibase
         if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == 'True' || RUN_DRIFT == '1'"
         command: diff
         continueOnError: true
         cmdArgs:
           reference-url:      "${TEST_URL}"
-          reference-username: "${LB_USER}"
-          reference-password: "${LB_PWD}"
-          # main (target) side comes from liquibase.properties, but we also pass creds explicitly:
+          reference-username: "${REF_DB_USER}"
+          reference-password: "${REF_DB_PWD}"
+          # target side: still uses liquibase.properties, but we also pass creds explicitly
           username:           "${LB_USER}"
           password:           "${LB_PWD}"
 
-      # 2) POLICIES (optional)
       - type: liquibase
         if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == 'True' || RUN_POLICIES == '1'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
 
-      # 3) AUDITS (optional): status + snapshot
       - type: liquibase
         if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == 'True' || RUN_AUDIT == '1'"
         command: status
