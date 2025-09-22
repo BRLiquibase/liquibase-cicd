@@ -15,7 +15,7 @@ stages:
       - type: liquibase
         if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == 'True' || RUN_DRIFT == '1'"
         command: diff
-        continueOnError: true
+        cmdArgs: "--reference-url=${TEST_URL}"
 
       # Policies (optional)
       - type: liquibase
