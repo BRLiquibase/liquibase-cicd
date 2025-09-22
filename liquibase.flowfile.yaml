@@ -1,44 +1,36 @@
-# Minimal flow file controlled by toggles:
-#   RUN_AUDIT:    on/off
-#   RUN_DRIFT:    on/off
-#   RUN_POLICIES: on/off
-# Connection comes from liquibase.properties in the repo/workspace.
+# Flow controlled by:
+#   RUN_AUDIT, RUN_DRIFT, RUN_POLICIES  -> on/off/true/false/1/0 supported
+# Connection comes from liquibase.properties.
 
 globalVariables:
   RUN_AUDIT:      "${RUN_AUDIT:-on}"
   RUN_DRIFT:      "${RUN_DRIFT:-on}"
   RUN_POLICIES:   "${RUN_POLICIES:-on}"
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
 
 stages:
   Default:
     actions:
-      # 1) Drift (optional). Non-blocking; remove continueOnError to make it gate the flow.
+      # Drift (optional, non-blocking so it never halts the rest)
       - type: liquibase
-        if: "RUN_DRIFT == 'on'"
+        if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == 'True' || RUN_DRIFT == '1'"
         command: drift
         continueOnError: true
 
-      # 2) Policies / checks (optional)
+      # Policies (optional)
       - type: liquibase
-        if: "RUN_POLICIES == 'on'"
+        if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == 'True' || RUN_POLICIES == '1'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
 
-      # 3) Audits (optional): quick status + snapshot
+      # Audits (optional): status + snapshot
       - type: liquibase
-        if: "RUN_AUDIT == 'on'"
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == 'True' || RUN_AUDIT == '1'"
         command: status
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
 
       - type: liquibase
-        if: "RUN_AUDIT == 'on'"
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == 'True' || RUN_AUDIT == '1'"
         command: snapshot
-
-      # 4) (Optional) Deploy — uncomment if you want to include the update
-      # - type: liquibase
-      #   command: update
-      #   cmdArgs:
-      #     changelog-file: "${CHANGELOG_FILE}"

@@ -12,7 +12,7 @@ on:
       run_audit:
         description: "Run audits?"
         required: true
-        type: choice
+        type: choice         # supports on/off; we'll normalize below
         options: [on, off]
         default: on
       run_drift:
@@ -35,7 +35,6 @@ jobs:
   liquibase:
     runs-on: self-hosted
 
-    # Example URLs — replace with your own or load from GitHub Environments
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
@@ -55,28 +54,40 @@ jobs:
             *)    echo "Unknown target"; exit 1;;
           esac
 
-      - name: Write liquibase.properties
+      # If your license is in GitHub Secrets as LIQUIBASE_PRO_LICENSE:
+      # (If you fetch from Vault, set an env var LIQUIBASE_PRO_LICENSE before this step.)
+      - name: Write liquibase.properties (incl. Pro license)
         shell: bash
         env:
           LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
           LB_USER: ${{ secrets.DB_USER }}
           LB_PWD:  ${{ secrets.DB_PWD }}
+          LIQUIBASE_PRO_LICENSE: ${{ secrets.LIQUIBASE_PRO_LICENSE }}
         run: |
           cat > liquibase.properties <<EOF
           url=${LB_URL}
           username=${LB_USER}
           password=${LB_PWD}
+          liquibase.licenseKey=${LIQUIBASE_PRO_LICENSE}
           EOF
 
-      - name: Export toggles for Flow
+      - name: Normalize toggles for Flow
         shell: bash
         run: |
-          echo "RUN_AUDIT=${{ inputs.run_audit }}"       >> $GITHUB_ENV
-          echo "RUN_DRIFT=${{ inputs.run_drift }}"       >> $GITHUB_ENV
-          echo "RUN_POLICIES=${{ inputs.run_policies }}" >> $GITHUB_ENV
+          norm () {
+            v="$1"
+            case "$v" in
+              on|On|ON|true|True|TRUE|1) echo on ;;
+              off|Off|OFF|false|False|FALSE|0|'') echo off ;;
+              *) echo "$v" ;;
+            esac
+          }
+          echo "RUN_AUDIT=$(norm '${{ inputs.run_audit }}')"       >> $GITHUB_ENV
+          echo "RUN_DRIFT=$(norm '${{ inputs.run_drift }}')"       >> $GITHUB_ENV
+          echo "RUN_POLICIES=$(norm '${{ inputs.run_policies }}')" >> $GITHUB_ENV
 
       - name: Run Liquibase flow
         shell: bash
         run: |
-          # License will be auto-discovered by Liquibase; no --license-key needed
+          # License is auto-discovered via liquibase.properties; no --license-key needed
           liquibase flow --flow-file=liquibase.flowfile.yaml
