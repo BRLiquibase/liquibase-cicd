@@ -7,7 +7,7 @@ globalVariables:
   RUN_AUDIT:      "${RUN_AUDIT:-on}"
   RUN_DRIFT:      "${RUN_DRIFT:-on}"
   RUN_POLICIES:   "${RUN_POLICIES:-on}"
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
   TEST_URL:       "${TEST_URL:-}"
   LB_USER:        "${LB_USER:-}"
   LB_PWD:         "${LB_PWD:-}"
