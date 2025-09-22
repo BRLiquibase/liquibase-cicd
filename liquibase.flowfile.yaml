@@ -1,61 +1,67 @@
 # liquibase.flowfile.yaml
-# Runs: diff(dev→test) → (optionally) checks → snapshot → update → status
-# Expects env: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
-# Optional: CHANGELOG_FILE, RUN_POLICIES, RUN_SNAPSHOT
+# Order: diff(dev→test) → (optionally) checks → snapshot → update → status
+# Resolves DB connection values from environment first, then falls back to liquibase.properties.
 
 globalVariables:
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
-  RUN_POLICIES:   "${RUN_POLICIES:-on}"   # accepts: on/off/true/false/1/0
-  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # accepts: on/off/true/false/1/0
+  # Use env if present, otherwise fall back to properties file values
+  LB_URL:    "${LB_URL:-${url}}"
+  LB_USER:   "${LB_USER:-${username}}"
+  LB_PWD:    "${LB_PWD:-${password}}"
+  DEV_URL:   "${DEV_URL:-null}"
+  TEST_URL:  "${TEST_URL:-null}"
+
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
+  RUN_POLICIES:   "${RUN_POLICIES:-on}"   # on/off/true/false/1/0
+  RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # on/off/true/false/1/0
 
 stages:
   Default:
     actions:
-      # Diff dev -> test (run FIRST; non-blocking by design)
+      # 1) Diff dev -> test (FIRST; non-blocking so it never stops the pipeline)
       - type: liquibase
         command: diff
         continueOnError: true
         cmdArgs:
-          reference-url: "${DEV_URL}"
+          reference-url:      "${DEV_URL}"
           reference-username: "${LB_USER}"
           reference-password: "${LB_PWD}"
-          url: "${TEST_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PWD}"
+          url:                "${TEST_URL}"
+          username:           "${LB_USER}"
+          password:           "${LB_PWD}"
 
-      # Policies (checks) — run if on/true/1 (case-insensitive for 'true')
+      # 2) Policy checks (only if enabled)
       - type: liquibase
         if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == 'True' || RUN_POLICIES == '1'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
-          url: "${LB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PWD}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PWD}"
 
-      # Snapshot (basic) — run if on/true/1
+      # 3) Snapshot (optional)
       - type: liquibase
         if: "RUN_SNAPSHOT == 'on' || RUN_SNAPSHOT == 'true' || RUN_SNAPSHOT == 'True' || RUN_SNAPSHOT == '1'"
         command: snapshot
         cmdArgs:
-          url: "${LB_URL}"
+          url:      "${LB_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
-      # Update (always)
+      # 4) Update (always)
       - type: liquibase
         command: update
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
-          url: "${LB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PWD}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PWD}"
 
-      # Status (always) — quick post-check
+      # 5) Status (always)
       - type: liquibase
         command: status
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
-          url: "${LB_URL}"
-          username: "${LB_USER}"
-          password: "${LB_PWD}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PWD}"
