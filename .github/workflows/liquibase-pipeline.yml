@@ -45,14 +45,12 @@ jobs:
       matrix:
         env: ${{ fromJson( inputs.target == 'all' && '["dev","test","prod"]' || format('["{0}"]', inputs.target) ) }}
 
-    # environment controls approvals/secrets per env
     environment: ${{ matrix.env }}
 
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
-      # Optional: set DRIFT_REF_URL as an Environment variable in GitHub for precise control
 
     steps:
       - name: Checkout
@@ -71,60 +69,37 @@ jobs:
           esac
           echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Determine reference URL for drift
-        id: refmap
+      - name: Write liquibase.properties (keeps commands simple)
         shell: bash
         env:
-          DRIFT_REF_URL: ${{ vars.DRIFT_REF_URL }}   # optional per-environment override
+          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
+          LB_USER: ${{ secrets.DB_USER }}
+          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          set -euo pipefail
-          if [ -n "${DRIFT_REF_URL:-}" ]; then
-            REF_URL="$DRIFT_REF_URL"
-          else
-            # Sensible fallback: compare upward from lower env
-            case "${{ matrix.env }}" in
-              dev)  REF_URL="${{ env.DEV_URL }}";;   # or set vars.DRIFT_REF_URL in the env
-              test) REF_URL="${{ env.DEV_URL }}";;
-              prod) REF_URL="${{ env.TEST_URL }}";;
-            esac
-          fi
-          echo "REF_URL=$REF_URL" >> "$GITHUB_OUTPUT"
+          cat > liquibase.properties <<EOF
+          url=${LB_URL}
+          username=${LB_USER}
+          password=${LB_PWD}
+          EOF
 
       - name: Prepare evidence folder
         shell: bash
         run: mkdir -p compliance
 
-      # --- DRIFT FIRST, ALWAYS ---
-      - name: Drift report (always first; never blocks)
-        id: drift
+      # --- DRIFT FIRST, ALWAYS (SIMPLE) ---
+      - name: Drift report (non-blocking)
         if: ${{ always() }}
         continue-on-error: true
         shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          REF_URL: ${{ steps.refmap.outputs.REF_URL }}
-          LB_USER: ${{ secrets.DB_USER }}
-          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          set -euo pipefail
-          # Capture JSON + log for audit. Doesn't fail the job.
-          liquibase \
-            --url="$LB_URL" --username="$LB_USER" --password="$LB_PWD" \
-            --reference-url="$REF_URL" --reference-username="$LB_USER" --reference-password="$LB_PWD" \
-            --log-file=compliance/drift.log \
-            drift --format=json > "compliance/drift-${{ matrix.env }}.json" || true
+          liquibase drift | tee "compliance/drift-${{ matrix.env }}.txt"
 
       # --- POLICIES SECOND ---
       - name: Compliance checks (run after drift)
         if: ${{ always() && inputs.compliance_mode != 'off' }}
         continue-on-error: ${{ inputs.compliance_mode == 'observe' }}
         shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ secrets.DB_USER }}
-          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          set -euo pipefail
           liquibase --log-file=compliance/checks.log checks run ${{
             inputs.change_ticket != '' && format('--labels=change:{0}', inputs.change_ticket) || ''
           }} | tee compliance/checks.txt
@@ -144,28 +119,19 @@ jobs:
 
       - name: Preflight — validate changelog
         shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ secrets.DB_USER }}
-          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          set -euo pipefail
           liquibase --log-file=compliance/validate.log validate
 
       - name: Run flow (policy & snapshot toggles)
         shell: bash
         env:
-          LB_URL:        ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER:       ${{ secrets.DB_USER }}
-          LB_PWD:        ${{ secrets.DB_PWD }}
-          DEV_URL:       ${{ env.DEV_URL }}
-          TEST_URL:      ${{ env.TEST_URL }}
-          RUN_POLICIES:  ${{ inputs.compliance_mode == 'off' && 'off' || 'on' }}
-          RUN_SNAPSHOT:  ${{ inputs.evidence_snapshot }}
+          DEV_URL:        ${{ env.DEV_URL }}
+          TEST_URL:       ${{ env.TEST_URL }}
+          RUN_POLICIES:   ${{ inputs.compliance_mode == 'off' && 'off' || 'on' }}
+          RUN_SNAPSHOT:   ${{ inputs.evidence_snapshot }}
           POLICY_ENFORCE: ${{ inputs.compliance_mode == 'enforce' && 'true' || 'false' }}
-          CHANGE_TICKET: ${{ inputs.change_ticket }}
+          CHANGE_TICKET:  ${{ inputs.change_ticket }}
         run: |
-          set -euo pipefail
           liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
                     --log-level=info \
                     --log-file=compliance/flow.log \
@@ -174,12 +140,7 @@ jobs:
       - name: Evidence — post-deploy snapshot
         if: ${{ inputs.evidence_snapshot == 'on' }}
         shell: bash
-        env:
-          LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
-          LB_USER: ${{ secrets.DB_USER }}
-          LB_PWD:  ${{ secrets.DB_PWD }}
         run: |
-          set -euo pipefail
           liquibase snapshot --format=json > "compliance/snapshot-${{ matrix.env }}.json"
 
       - name: Publish compliance evidence
@@ -198,5 +159,5 @@ jobs:
             echo "- Compliance mode: **${{ inputs.compliance_mode }}**"
             [ -n "${{ inputs.change_ticket }}" ] && echo "- Change ticket: \`${{ inputs.change_ticket }}\`"
             echo "- Evidence artifact: **liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}**"
-            echo "- Drift JSON: \`compliance/drift-${{ matrix.env }}.json\`"
+            echo "- Drift output: \`compliance/drift-${{ matrix.env }}.txt\`"
           } >> "$GITHUB_STEP_SUMMARY"
