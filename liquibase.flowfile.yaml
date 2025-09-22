@@ -1,21 +1,25 @@
 # liquibase.flowfile.yaml
-# Runs: (optionally) checks → snapshot → update → diff(dev→test)
+# Runs: diff(dev→test) → (optionally) checks → snapshot → update → status
 # Expects env: LB_URL, DEV_URL, TEST_URL, LB_USER, LB_PWD
 # Optional: CHANGELOG_FILE, RUN_POLICIES, RUN_SNAPSHOT
 
 globalVariables:
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog/master.xml}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
   RUN_POLICIES:   "${RUN_POLICIES:-on}"   # accepts: on/off/true/false/1/0
   RUN_SNAPSHOT:   "${RUN_SNAPSHOT:-on}"   # accepts: on/off/true/false/1/0
 
 stages:
   Default:
     actions:
+      # Diff dev -> test (run FIRST; non-blocking by design)
       - type: liquibase
-        command: status
+        command: diff
+        continueOnError: true
         cmdArgs:
-          changelog-file: "${CHANGELOG_FILE}"
-          url: "${LB_URL}"
+          reference-url: "${DEV_URL}"
+          reference-username: "${LB_USER}"
+          reference-password: "${LB_PWD}"
+          url: "${TEST_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
@@ -29,7 +33,7 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
-      # Snapshot (basic) — run if on/true/1 (case-insensitive for 'true')
+      # Snapshot (basic) — run if on/true/1
       - type: liquibase
         if: "RUN_SNAPSHOT == 'on' || RUN_SNAPSHOT == 'true' || RUN_SNAPSHOT == 'True' || RUN_SNAPSHOT == '1'"
         command: snapshot
@@ -47,13 +51,11 @@ stages:
           username: "${LB_USER}"
           password: "${LB_PWD}"
 
-      # Diff dev -> test (always)
+      # Status (always) — quick post-check
       - type: liquibase
-        command: diff
+        command: status
         cmdArgs:
-          reference-url: "${DEV_URL}"
-          reference-username: "${LB_USER}"
-          reference-password: "${LB_PWD}"
-          url: "${TEST_URL}"
+          changelog-file: "${CHANGELOG_FILE}"
+          url: "${LB_URL}"
           username: "${LB_USER}"
           password: "${LB_PWD}"

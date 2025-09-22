@@ -1,7 +1,5 @@
 name: Liquibase Compliance Pipeline (Flow-based)
 
-run-name: "Liquibase ➜ ${{ inputs.target }} • compliance=${{ inputs.compliance_mode }} • by @${{ github.actor }}"
-
 on:
   workflow_dispatch:
     inputs:
@@ -12,22 +10,17 @@ on:
         options: [dev, test, prod, all]
         default: dev
       compliance_mode:
-        description: 'Compliance checks: enforce (fail), observe (log), or off'
+        description: 'Compliance: enforce (fail), observe (log), or off'
         required: true
         type: choice
         options: [enforce, observe, off]
         default: enforce
       evidence_snapshot:
-        description: 'Capture evidence snapshot after deploy?'
+        description: 'Capture post-deploy snapshot?'
         required: true
         type: choice
         options: [on, off]
         default: on
-      change_ticket:
-        description: 'Change/ticket ID (for audit trail labels)'
-        required: false
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -53,8 +46,7 @@ jobs:
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Select target URL
         id: envmap
@@ -69,7 +61,7 @@ jobs:
           esac
           echo "LB_URL=$LB_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Write liquibase.properties (keeps commands simple)
+      - name: Write liquibase.properties
         shell: bash
         env:
           LB_URL:  ${{ steps.envmap.outputs.LB_URL }}
@@ -82,82 +74,22 @@ jobs:
           password=${LB_PWD}
           EOF
 
-      - name: Prepare evidence folder
-        shell: bash
-        run: mkdir -p compliance
-
-      # --- DRIFT FIRST, ALWAYS (SIMPLE) ---
-      - name: Drift report (non-blocking)
-        if: ${{ always() }}
-        continue-on-error: true
+      # Map inputs to flow env toggles
+      - name: Set compliance env
+        id: toggles
         shell: bash
         run: |
-          liquibase drift | tee "compliance/drift-${{ matrix.env }}.txt"
+          case "${{ inputs.compliance_mode }}" in
+            enforce) echo "RUN_POLICIES=on"          >> $GITHUB_ENV; echo "POLICY_ENFORCE=true"  >> $GITHUB_ENV;;
+            observe) echo "RUN_POLICIES=on"          >> $GITHUB_ENV; echo "POLICY_ENFORCE=false" >> $GITHUB_ENV;;
+            off)     echo "RUN_POLICIES=off"         >> $GITHUB_ENV; echo "POLICY_ENFORCE=false" >> $GITHUB_ENV;;
+          esac
+          echo "RUN_SNAPSHOT=${{ inputs.evidence_snapshot }}" >> $GITHUB_ENV
+          echo "LIQUIBASE_ENV=${{ matrix.env }}"               >> $GITHUB_ENV
 
-      # --- POLICIES SECOND ---
-      - name: Compliance checks (run after drift)
-        if: ${{ always() && inputs.compliance_mode != 'off' }}
-        continue-on-error: ${{ inputs.compliance_mode == 'observe' }}
+      # One command: flow handles drift -> policies -> deploy -> snapshot
+      - name: Run compliance flow
         shell: bash
-        run: |
-          liquibase --log-file=compliance/checks.log checks run ${{
-            inputs.change_ticket != '' && format('--labels=change:{0}', inputs.change_ticket) || ''
-          }} | tee compliance/checks.txt
-
-      # Guardrails applied AFTER policies so drift+policies always execute
-      - name: Guardrails — prod only from main
-        if: ${{ matrix.env == 'prod' && github.ref != 'refs/heads/main' }}
-        run: |
-          echo "Ref '${GITHUB_REF}' is not allowed to deploy to prod. Use 'main'." >&2
-          exit 1
-
-      - name: Guardrails — disallow turning checks off in prod
-        if: ${{ matrix.env == 'prod' && inputs.compliance_mode == 'off' }}
-        run: |
-          echo "Compliance checks cannot be disabled for prod." >&2
-          exit 1
-
-      - name: Preflight — validate changelog
-        shell: bash
-        run: |
-          liquibase --log-file=compliance/validate.log validate
-
-      - name: Run flow (policy & snapshot toggles)
-        shell: bash
-        env:
-          DEV_URL:        ${{ env.DEV_URL }}
-          TEST_URL:       ${{ env.TEST_URL }}
-          RUN_POLICIES:   ${{ inputs.compliance_mode == 'off' && 'off' || 'on' }}
-          RUN_SNAPSHOT:   ${{ inputs.evidence_snapshot }}
-          POLICY_ENFORCE: ${{ inputs.compliance_mode == 'enforce' && 'true' || 'false' }}
-          CHANGE_TICKET:  ${{ inputs.change_ticket }}
         run: |
           liquibase --license-key "${{ secrets.LIQUIBASE_PRO_LICENSE }}" \
-                    --log-level=info \
-                    --log-file=compliance/flow.log \
-                    flow
-
-      - name: Evidence — post-deploy snapshot
-        if: ${{ inputs.evidence_snapshot == 'on' }}
-        shell: bash
-        run: |
-          liquibase snapshot --format=json > "compliance/snapshot-${{ matrix.env }}.json"
-
-      - name: Publish compliance evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: "liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}"
-          path: compliance/
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Run summary
-        shell: bash
-        run: |
-          {
-            echo "### Liquibase ${{ matrix.env }} deployment"
-            echo "- Compliance mode: **${{ inputs.compliance_mode }}**"
-            [ -n "${{ inputs.change_ticket }}" ] && echo "- Change ticket: \`${{ inputs.change_ticket }}\`"
-            echo "- Evidence artifact: **liquibase-evidence-${{ matrix.env }}-${{ github.run_number }}**"
-            echo "- Drift output: \`compliance/drift-${{ matrix.env }}.txt\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+                    flow --flow-file=liquibase.flowfile.yaml
