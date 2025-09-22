@@ -35,7 +35,7 @@ jobs:
   liquibase:
     runs-on: self-hosted
 
-    # Example URLs — replace with your own or pull from GitHub Environments
+    # Example URLs — replace with your own or load from GitHub Environments
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
@@ -71,11 +71,12 @@ jobs:
       - name: Export toggles for Flow
         shell: bash
         run: |
-          echo "RUN_AUDIT=${{ inputs.run_audit }}"     >> $GITHUB_ENV
-          echo "RUN_DRIFT=${{ inputs.run_drift }}"     >> $GITHUB_ENV
+          echo "RUN_AUDIT=${{ inputs.run_audit }}"       >> $GITHUB_ENV
+          echo "RUN_DRIFT=${{ inputs.run_drift }}"       >> $GITHUB_ENV
           echo "RUN_POLICIES=${{ inputs.run_policies }}" >> $GITHUB_ENV
 
       - name: Run Liquibase flow
         shell: bash
         run: |
+          # License will be auto-discovered by Liquibase; no --license-key needed
           liquibase flow --flow-file=liquibase.flowfile.yaml
