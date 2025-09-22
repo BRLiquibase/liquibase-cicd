@@ -14,7 +14,7 @@ stages:
       # Drift (optional, non-blocking so it never halts the rest)
       - type: liquibase
         if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == 'True' || RUN_DRIFT == '1'"
-        command: drift
+        command: diff
         continueOnError: true
 
       # Policies (optional)
