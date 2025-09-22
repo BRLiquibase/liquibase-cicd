@@ -1,6 +1,5 @@
-# Flow toggles come from env:
-#   RUN_AUDIT, RUN_DRIFT, RUN_POLICIES -> on/off
-# Connections come from env:
+# Toggles: RUN_AUDIT, RUN_DRIFT, RUN_POLICIES (on/off/true/false/1/0/yes/no)
+# Connections from env:
 #   Target:   LB_URL, LB_USER, LB_PASSWORD
 #   Reference (diff): TEST_URL (uses same LB_USER/LB_PASSWORD)
 
@@ -18,22 +17,22 @@ globalVariables:
 stages:
   Default:
     actions:
-      # 1) DIFF (optional). Non-blocking; delete continueOnError to gate the flow.
+      # 1) DIFF (optional). Non-blocking; remove continueOnError to gate.
       - type: liquibase
-        if: "RUN_DRIFT == 'on'"
+        if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == '1' || RUN_DRIFT == 'yes'"
         command: diff
         continueOnError: true
         cmdArgs:
-          url:                  "${LB_URL}"
-          username:             "${LB_USER}"
-          password:             "${LB_PASSWORD}"
-          reference-url:        "${TEST_URL}"
-          reference-username:   "${LB_USER}"
-          reference-password:   "${LB_PASSWORD}"
+          url:                "${LB_URL}"
+          username:           "${LB_USER}"
+          password:           "${LB_PASSWORD}"
+          reference-url:      "${TEST_URL}"
+          reference-username: "${LB_USER}"
+          reference-password: "${LB_PASSWORD}"
 
       # 2) POLICIES (optional)
       - type: liquibase
-        if: "RUN_POLICIES == 'on'"
+        if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == '1' || RUN_POLICIES == 'yes'"
         command: checks run
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
@@ -43,7 +42,7 @@ stages:
 
       # 3) AUDITS (optional): status + snapshot
       - type: liquibase
-        if: "RUN_AUDIT == 'on'"
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == '1' || RUN_AUDIT == 'yes'"
         command: status
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
@@ -52,7 +51,7 @@ stages:
           password:       "${LB_PASSWORD}"
 
       - type: liquibase
-        if: "RUN_AUDIT == 'on'"
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == '1' || RUN_AUDIT == 'yes'"
         command: snapshot
         cmdArgs:
           url:            "${LB_URL}"

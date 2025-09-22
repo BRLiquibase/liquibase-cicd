@@ -35,7 +35,6 @@ jobs:
   liquibase:
     runs-on: self-hosted
 
-    # Replace with your real URLs or move to GitHub Environments
     env:
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
@@ -55,21 +54,33 @@ jobs:
             *)    echo "Unknown target"; exit 1;;
           esac
 
-      - name: Export env for Flow
+      - name: Normalize & export toggles + connections
         shell: bash
         run: |
-          # Toggles (inputs are already 'on'/'off')
-          echo "RUN_AUDIT=${{ inputs.run_audit }}"         >> $GITHUB_ENV
-          echo "RUN_DRIFT=${{ inputs.run_drift }}"         >> $GITHUB_ENV
-          echo "RUN_POLICIES=${{ inputs.run_policies }}"   >> $GITHUB_ENV
-          # Connections
+          norm () {
+            v="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+            case "$v" in
+              on|true|1|yes)  echo on ;;
+              off|false|0|no|'') echo off ;;
+              *) echo "$v" ;;
+            esac
+          }
+
+          echo "RUN_AUDIT=$(norm '${{ inputs.run_audit }}')"       >> $GITHUB_ENV
+          echo "RUN_DRIFT=$(norm '${{ inputs.run_drift }}')"       >> $GITHUB_ENV
+          echo "RUN_POLICIES=$(norm '${{ inputs.run_policies }}')" >> $GITHUB_ENV
+
           echo "LB_URL=${{ steps.envmap.outputs.LB_URL }}" >> $GITHUB_ENV
           echo "LB_USER=${{ secrets.LB_USER }}"            >> $GITHUB_ENV
           echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"    >> $GITHUB_ENV
           echo "TEST_URL=${{ env.TEST_URL }}"              >> $GITHUB_ENV
 
+          echo "Final toggles:"
+          echo "  RUN_AUDIT=${{ inputs.run_audit }}"
+          echo "  RUN_DRIFT=${{ inputs.run_drift }}"
+          echo "  RUN_POLICIES=${{ inputs.run_policies }}"
+
       - name: Run Liquibase flow
         shell: bash
         run: |
-          # Pro license is resolved by your existing liquibase.properties in the repo
           liquibase flow --flow-file=liquibase.flowfile.yaml
