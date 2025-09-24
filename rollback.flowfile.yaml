@@ -1,0 +1,47 @@
+globalVariables:
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
+
+  LB_URL:       "${LB_URL:-}"
+  LB_USER:      "${LB_USER:-}"
+  LB_PASSWORD:  "${LB_PASSWORD:-}"
+
+  ROLLBACK_TAG: "${ROLLBACK_TAG:-}"
+
+stages:
+  Default:
+    actions:
+      # 1) Status (pre-check)
+      - type: liquibase
+        command: status
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
+
+      # 2) Rollback to tag
+      - type: liquibase
+        command: rollbackToTag
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
+          tag:            "${ROLLBACK_TAG}"
+
+      # 3) History (post-check)
+      - type: liquibase
+        command: history
+        cmdArgs:
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
+
+      # 4) Status (post-check)
+      - type: liquibase
+        command: status
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"

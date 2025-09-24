@@ -40,24 +40,16 @@ jobs:
             *)    echo "Unknown target"; exit 1;;
           esac
 
-      - name: Export connections
+      - name: Export env for Flow
         shell: bash
         run: |
           echo "LB_URL=${{ steps.envmap.outputs.LB_URL }}" >> $GITHUB_ENV
           echo "LB_USER=${{ secrets.LB_USER }}"            >> $GITHUB_ENV
           echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"    >> $GITHUB_ENV
+          echo "ROLLBACK_TAG=${{ inputs.rollback_tag }}"   >> $GITHUB_ENV
+          echo "CHANGELOG_FILE=changelog-sql/master.xml"   >> $GITHUB_ENV  # adjust if different
 
-      - name: Liquibase rollbackToTag
+      - name: Run rollback flow
         shell: bash
         run: |
-          liquibase \
-            --url="${LB_URL}" \
-            --username="${LB_USER}" \
-            --password="${LB_PASSWORD}" \
-            rollbackToTag "${{ inputs.rollback_tag }}"
-
-      - name: Verify state
-        shell: bash
-        run: |
-          liquibase --url="${LB_URL}" --username="${LB_USER}" --password="${LB_PASSWORD}" history
-          liquibase --url="${LB_URL}" --username="${LB_USER}" --password="${LB_PASSWORD}" status --verbose
+          liquibase flow --flow-file=rollback.flowfile.yaml
