@@ -21,7 +21,7 @@ stages:
 
       # 2) Rollback to tag
       - type: liquibase
-        command: rollbackToTag
+        command: rollback
         cmdArgs:
           changelog-file: "${CHANGELOG_FILE}"
           url:            "${LB_URL}"
