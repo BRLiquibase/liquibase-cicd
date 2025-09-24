@@ -14,6 +14,8 @@ globalVariables:
   LB_PASSWORD:  "${LB_PASSWORD:-}"
   TEST_URL:     "${TEST_URL:-}"
 
+  RELEASE_TAG:  "${RELEASE_TAG:-}"     # ✨ NEW
+
 stages:
   Default:
     actions:
@@ -57,3 +59,13 @@ stages:
           url:            "${LB_URL}"
           username:       "${LB_USER}"
           password:       "${LB_PASSWORD}"
+
+      # 4) TAG (always runs if a tag value is provided)
+      - type: liquibase                   # ✨ NEW
+        if: "RELEASE_TAG != ''"
+        command: tag
+        cmdArgs:
+          url:       "${LB_URL}"
+          username:  "${LB_USER}"
+          password:  "${LB_PASSWORD}"
+          tag:       "${RELEASE_TAG}"

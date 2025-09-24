@@ -27,6 +27,11 @@ on:
         type: choice
         options: [on, off]
         default: on
+      release_tag:                      # ✨ NEW
+        description: "Liquibase tag to apply after run (e.g., v1.3.0)"
+        required: true
+        type: string
+        default: "vX.Y.Z"
 
 permissions:
   contents: read
@@ -75,10 +80,13 @@ jobs:
           echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"    >> $GITHUB_ENV
           echo "TEST_URL=${{ env.TEST_URL }}"              >> $GITHUB_ENV
 
+          echo "RELEASE_TAG=${{ inputs.release_tag }}"     >> $GITHUB_ENV   # ✨ NEW
+
           echo "Final toggles:"
           echo "  RUN_AUDIT=${{ inputs.run_audit }}"
           echo "  RUN_DRIFT=${{ inputs.run_drift }}"
           echo "  RUN_POLICIES=${{ inputs.run_policies }}"
+          echo "  RELEASE_TAG=${{ inputs.release_tag }}"
 
       - name: Run Liquibase flow
         shell: bash

@@ -1,0 +1,63 @@
+name: Liquibase Rollback Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [dev, test, prod]
+        default: prod
+      rollback_tag:
+        description: "Tag to rollback to (e.g., v1.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: self-hosted
+
+    env:
+      DEV_URL:  jdbc:postgresql://localhost:5433/postgres
+      TEST_URL: jdbc:postgresql://localhost:5434/postgres
+      PROD_URL: jdbc:postgresql://localhost:5435/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick target URL
+        id: envmap
+        shell: bash
+        run: |
+          case "${{ inputs.target }}" in
+            dev)  echo "LB_URL=${{ env.DEV_URL }}"  >> $GITHUB_OUTPUT;;
+            test) echo "LB_URL=${{ env.TEST_URL }}" >> $GITHUB_OUTPUT;;
+            prod) echo "LB_URL=${{ env.PROD_URL }}" >> $GITHUB_OUTPUT;;
+            *)    echo "Unknown target"; exit 1;;
+          esac
+
+      - name: Export connections
+        shell: bash
+        run: |
+          echo "LB_URL=${{ steps.envmap.outputs.LB_URL }}" >> $GITHUB_ENV
+          echo "LB_USER=${{ secrets.LB_USER }}"            >> $GITHUB_ENV
+          echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"    >> $GITHUB_ENV
+
+      - name: Liquibase rollbackToTag
+        shell: bash
+        run: |
+          liquibase \
+            --url="${LB_URL}" \
+            --username="${LB_USER}" \
+            --password="${LB_PASSWORD}" \
+            rollbackToTag "${{ inputs.rollback_tag }}"
+
+      - name: Verify state
+        shell: bash
+        run: |
+          liquibase --url="${LB_URL}" --username="${LB_USER}" --password="${LB_PASSWORD}" history
+          liquibase --url="${LB_URL}" --username="${LB_USER}" --password="${LB_PASSWORD}" status --verbose
