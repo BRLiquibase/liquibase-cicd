@@ -69,3 +69,21 @@ stages:
           username:  "${LB_USER}"
           password:  "${LB_PASSWORD}"
           tag:       "${RELEASE_TAG}"
+
+      # 5) UPDATE (always runs)
+      - type: liquibase
+        command: update
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
+
+      # 6) AUDITS (optional): history + status
+      - type: liquibase
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == '1' || RUN_AUDIT == 'yes'"
+        command: history
+        cmdArgs:
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"  
