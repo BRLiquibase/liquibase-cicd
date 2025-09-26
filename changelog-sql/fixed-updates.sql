@@ -2,7 +2,8 @@
 -- Primary target: PostgreSQL. DB2/LUW equivalents are provided as commented lines prefixed with "-- [DB2]".
 -- Simple flow: create planets -> add columns/unique -> create moons (FK) -> add indexes -> alter column types.
 
---changeset james.bennett:001
+--changeset Ben.Riley:001 labels:initial
+-- Initial creation of planets_demo table
 -- Create base table
 CREATE TABLE planets_demo (
     id    BIGSERIAL PRIMARY KEY,
