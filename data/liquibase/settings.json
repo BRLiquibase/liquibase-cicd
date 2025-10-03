@@ -1,6 +1,7 @@
 {
   "liquibase.properties": {
-    "liquibase.properties": "/Users/benriley/Documents/GitHub/liquibase-cicd/actions-runner/_work/liquibase-cicd/liquibase-cicd/liquibase.properties"
+    "liquibase.properties": "/Users/benriley/Documents/GitHub/liquibase-cicd/actions-runner/_work/liquibase-cicd/liquibase-cicd/liquibase.properties",
+    "defaultPropertiesFile": "/Users/benriley/Documents/GitHub/liquibase-cicd/liquibase.properties"
   },
   "liquibase.flowfile.yaml": {
     "liquibase.flowfile.yaml": "/Users/benriley/Documents/GitHub/liquibase-cicd/actions-runner/_work/liquibase-cicd/liquibase-cicd/liquibase.flowfile.yaml"

@@ -1,0 +1,14 @@
+{
+  "configuration": {
+    "liquibase.reports": {
+      "rollback-one-changeset": {
+        "type": "boolean",
+        "currentSelection": true,
+        "markdownDescription": "When enabled Rollback-One-Changeset command will display the generated report"
+      }
+    },
+    "liquibase.analytics": {
+      "enabled": false
+    }
+  }
+}
