@@ -3,11 +3,9 @@ name: Liquibase Simple Pipeline
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: "Target environment"
+      targets:                # 👈 was 'target'; now supports "dev" or "dev,test"
+        description: "Comma-separated envs to deploy (e.g., dev or dev,test or dev,test,prod)"
         required: true
-        type: choice
-        options: [dev, test, prod]
         default: dev
       run_audit:
         description: "Run audits?"
@@ -27,20 +25,51 @@ on:
         type: choice
         options: [on, off]
         default: on
-      release_tag:                      # ✨ NEW
+      release_tag:
         description: "Liquibase tag to apply after run (e.g., v1.3.0)"
         required: true
-        type: string
         default: "vX.Y.Z"
 
 permissions:
   contents: read
 
 jobs:
+  # Build a matrix from the comma-separated input
+  set-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      env-matrix: ${{ steps.mk.outputs.matrix }}
+    steps:
+      - id: mk
+        shell: bash
+        run: |
+          IFS=',' read -ra ARR <<< "${{ github.event.inputs.targets }}"
+          json="["
+          sep=""
+          for e in "${ARR[@]}"; do
+            t=$(echo "$e" | tr '[:upper:]' '[:lower:]' | xargs)
+            case "$t" in dev|test|prod) : ;; *) echo "Invalid env: $t"; exit 1;; esac
+            json="${json}${sep}\"$t\""; sep=","
+          done
+          json="${json}]"
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo "Matrix: $json"
+
   liquibase:
+    needs: set-matrix
     runs-on: self-hosted
+    # one runner at a time per env to avoid collisions
+    concurrency:
+      group: liquibase-${{ matrix.target }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.set-matrix.outputs.env-matrix) }}
 
     env:
+      # ✅ Your connection endpoints (adjust as needed)
       DEV_URL:  jdbc:postgresql://localhost:5433/postgres
       TEST_URL: jdbc:postgresql://localhost:5434/postgres
       PROD_URL: jdbc:postgresql://localhost:5435/postgres
@@ -48,45 +77,76 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pick target URL
-        id: envmap
+      - name: Pick target URLs & credentials
+        id: pick
         shell: bash
         run: |
-          case "${{ inputs.target }}" in
-            dev)  echo "LB_URL=${{ env.DEV_URL }}"  >> $GITHUB_OUTPUT;;
-            test) echo "LB_URL=${{ env.TEST_URL }}" >> $GITHUB_OUTPUT;;
-            prod) echo "LB_URL=${{ env.PROD_URL }}" >> $GITHUB_OUTPUT;;
-            *)    echo "Unknown target"; exit 1;;
+          # Target URL
+          case "${{ matrix.target }}" in
+            dev)  echo "LB_URL=${{ env.DEV_URL }}"  >> $GITHUB_OUTPUT ;;
+            test) echo "LB_URL=${{ env.TEST_URL }}" >> $GITHUB_OUTPUT ;;
+            prod) echo "LB_URL=${{ env.PROD_URL }}" >> $GITHUB_OUTPUT ;;
           esac
 
-      - name: Normalize & export toggles + connections
+          # Reference URL for diff (tweak as you prefer)
+          # - when deploying DEV, diff against TEST
+          # - when deploying TEST, diff against DEV
+          # - when deploying PROD, diff against TEST
+          case "${{ matrix.target }}" in
+            dev)  echo "REF_URL=${{ env.TEST_URL }}" >> $GITHUB_OUTPUT ;;
+            test) echo "REF_URL=${{ env.DEV_URL }}"  >> $GITHUB_OUTPUT ;;
+            prod) echo "REF_URL=${{ env.TEST_URL }}" >> $GITHUB_OUTPUT ;;
+          esac
+
+          # Credentials strategy:
+          #   Prefer per-env secrets if present; else fall back to shared ones
+          get_secret () {
+            local key="$1"
+            local def="$2"
+            printf '%s' "${!key:-$def}"
+          }
+
+          # These lines rely on Actions’ interpolation; the fallback logic is handled below.
+          echo "LB_USER=${{ secrets.LB_USER }}"          >> $GITHUB_ENV
+          echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"  >> $GITHUB_ENV
+          echo "LB_USER_DEV=${{ secrets.LB_USER_DEV }}"  >> $GITHUB_ENV
+          echo "LB_PASS_DEV=${{ secrets.LB_PASSWORD_DEV }}" >> $GITHUB_ENV
+          echo "LB_USER_TEST=${{ secrets.LB_USER_TEST }}"   >> $GITHUB_ENV
+          echo "LB_PASS_TEST=${{ secrets.LB_PASSWORD_TEST }}" >> $GITHUB_ENV
+          echo "LB_USER_PROD=${{ secrets.LB_USER_PROD }}"   >> $GITHUB_ENV
+          echo "LB_PASS_PROD=${{ secrets.LB_PASSWORD_PROD }}" >> $GITHUB_ENV
+
+      - name: Export runtime env (toggles, URLs, creds)
         shell: bash
         run: |
-          norm () {
-            v="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
-            case "$v" in
-              on|true|1|yes)  echo on ;;
-              off|false|0|no|'') echo off ;;
-              *) echo "$v" ;;
-            esac
-          }
+          norm () { v="$(echo "$1" | tr '[:upper:]' '[:lower:]')"; case "$v" in on|true|1|yes) echo on;; *) echo off;; esac; }
 
           echo "RUN_AUDIT=$(norm '${{ inputs.run_audit }}')"       >> $GITHUB_ENV
           echo "RUN_DRIFT=$(norm '${{ inputs.run_drift }}')"       >> $GITHUB_ENV
           echo "RUN_POLICIES=$(norm '${{ inputs.run_policies }}')" >> $GITHUB_ENV
+          echo "RELEASE_TAG=${{ inputs.release_tag }}"             >> $GITHUB_ENV
 
-          echo "LB_URL=${{ steps.envmap.outputs.LB_URL }}" >> $GITHUB_ENV
-          echo "LB_USER=${{ secrets.LB_USER }}"            >> $GITHUB_ENV
-          echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"    >> $GITHUB_ENV
-          echo "TEST_URL=${{ env.TEST_URL }}"              >> $GITHUB_ENV
+          echo "LB_URL=${{ steps.pick.outputs.LB_URL }}" >> $GITHUB_ENV
+          echo "TEST_URL=${{ steps.pick.outputs.REF_URL }}" >> $GITHUB_ENV
 
-          echo "RELEASE_TAG=${{ inputs.release_tag }}"     >> $GITHUB_ENV   # ✨ NEW
+          # Choose per-env user/password if provided, else shared
+          case "${{ matrix.target }}" in
+            dev)
+              USER="${LB_USER_DEV:-$LB_USER}"; PASS="${LB_PASS_DEV:-$LB_PASSWORD}"
+              ;;
+            test)
+              USER="${LB_USER_TEST:-$LB_USER}"; PASS="${LB_PASS_TEST:-$LB_PASSWORD}"
+              ;;
+            prod)
+              USER="${LB_USER_PROD:-$LB_USER}"; PASS="${LB_PASS_PROD:-$LB_PASSWORD}"
+              ;;
+          esac
+          echo "LB_USER=$USER"       >> $GITHUB_ENV
+          echo "LB_PASSWORD=$PASS"   >> $GITHUB_ENV
 
-          echo "Final toggles:"
-          echo "  RUN_AUDIT=${{ inputs.run_audit }}"
-          echo "  RUN_DRIFT=${{ inputs.run_drift }}"
-          echo "  RUN_POLICIES=${{ inputs.run_policies }}"
-          echo "  RELEASE_TAG=${{ inputs.release_tag }}"
+          echo "Deploying to: ${{ matrix.target }}"
+          echo "LB_URL=$LB_URL"
+          echo "REF_URL=$TEST_URL"
 
       - name: Run Liquibase flow
         shell: bash
