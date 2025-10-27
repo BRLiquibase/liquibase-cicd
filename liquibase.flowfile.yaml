@@ -1,35 +1,89 @@
-##########           LIQUIBASE FLOWFILE                ##########
-##########  learn more http://docs.liquibase.com/flow  ##########
+# Toggles: RUN_AUDIT, RUN_DRIFT, RUN_POLICIES (on/off/true/false/1/0/yes/no)
+# Connections from env:
+#   Target:   LB_URL, LB_USER, LB_PASSWORD
+#   Reference (diff): TEST_URL (uses same LB_USER/LB_PASSWORD)
 
-## Note: Any command which fails in any stage below result in the command stopping, and endStage being run.
-## A flow file can have one or more stages, each with multiple "actions", 
-## or your flow file can have multiple stages with fewer actions in each stage.
+globalVariables:
+  RUN_AUDIT:      "${RUN_AUDIT:-on}"
+  RUN_DRIFT:      "${RUN_DRIFT:-on}"
+  RUN_POLICIES:   "${RUN_POLICIES:-on}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
+
+  LB_URL:       "${LB_URL:-}"
+  LB_USER:      "${LB_USER:-}"
+  LB_PASSWORD:  "${LB_PASSWORD:-}"
+  TEST_URL:     "${TEST_URL:-}"
+
+  RELEASE_TAG:  "${RELEASE_TAG:-}"     # ✨ NEW
+
 stages:
-
-  ## The first stage of actions. 
   Default:
-
     actions:
-      #
-      # Policy Checks for changelog
-      #
+      # 1) DIFF (optional). Non-blocking; remove continueOnError to gate.
       - type: liquibase
+        if: "RUN_DRIFT == 'on' || RUN_DRIFT == 'true' || RUN_DRIFT == '1' || RUN_DRIFT == 'yes'"
+        command: diff
+        continueOnError: true
+        cmdArgs:
+          url:                "${LB_URL}"
+          username:           "${LB_USER}"
+          password:           "${LB_PASSWORD}"
+          reference-url:      "${TEST_URL}"
+          reference-username: "${LB_USER}"
+          reference-password: "${LB_PASSWORD}"
+
+      # 2) POLICIES (optional)
+      - type: liquibase
+        if: "RUN_POLICIES == 'on' || RUN_POLICIES == 'true' || RUN_POLICIES == '1' || RUN_POLICIES == 'yes'"
+        command: checks run
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
+
+      # 3) AUDITS (optional): status + snapshot
+      - type: liquibase
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == '1' || RUN_AUDIT == 'yes'"
         command: status
-        cmdArgs: {checks-scope: changelog}
-      #
-      # Run the diff-changelog command to generate a changelog based on differences between the reference database and target database
-      #
-      #
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
+
       - type: liquibase
-        command: diff-changelog
-        cmdArgs: {changelog-file: changelog.postgresql.sql}
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == '1' || RUN_AUDIT == 'yes'"
+        command: snapshot
+        cmdArgs:
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
 
+      # 4) TAG (always runs if a tag value is provided)
+      - type: liquibase                   # ✨ NEW
+        if: "RELEASE_TAG != ''"
+        command: tag
+        cmdArgs:
+          url:       "${LB_URL}"
+          username:  "${LB_USER}"
+          password:  "${LB_PASSWORD}"
+          tag:       "${RELEASE_TAG}"
 
-## The endStage ALWAYS RUNS. 
-## So put actions here which you desire to perform whether previous stages' actions succeed or fail.
-## If you do not want any actions to ALWAYS RUN, simply delete the endStage from your flow file.
+      # 5) UPDATE (always runs)
+      - type: liquibase
+        command: update
+        cmdArgs:
+          changelog-file: "${CHANGELOG_FILE}"
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"
 
-endStage:
-  actions:
-    - type: liquibase
-      command: history
+      # 6) AUDITS (optional): history + status
+      - type: liquibase
+        if: "RUN_AUDIT == 'on' || RUN_AUDIT == 'true' || RUN_AUDIT == '1' || RUN_AUDIT == 'yes'"
+        command: history
+        cmdArgs:
+          url:            "${LB_URL}"
+          username:       "${LB_USER}"
+          password:       "${LB_PASSWORD}"  
