@@ -38,6 +38,8 @@ CREATE TABLE moons_demo (
     CONSTRAINT fk_moons_demo_planet
       FOREIGN KEY (planet_id) REFERENCES planets_demo(id) ON DELETE CASCADE
 );
+
+drop table addresses;
 --rollback DROP TABLE IF EXISTS moons_demo;
 
 -- [DB2] CREATE TABLE moons_demo (
