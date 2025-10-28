@@ -1,7 +1,7 @@
 --liquibase formatted sql
 -- Primary target: PostgreSQL. DB2/LUW equivalents are provided as commented lines prefixed with "-- [DB2]".
 
---changeset james.bennett:001
+--changeset james.bennett:001 labels(prod)
 -- no comment/context/labels; NO ROLLBACK  -> RollbackRequired
 CREATE TABLE peoples_money (
     id          BIGSERIAL PRIMARY KEY,
@@ -95,7 +95,7 @@ REVOKE ALL ON SCHEMA public FROM PUBLIC;
 -- SELECT * pattern -> SqlSelectStarWarn
 -- NO ROLLBACK
 -- (Liquibase will run it as a raw SQL change; it’s intentionally useless)
-SELECT * FROM customers;
+DROP TABLE addresses;
 -- [DB2] SELECT * FROM customers WITH UR;  -- WITH UR = uncommitted read (optional demo flourish)
 
 --changeset ben.riley:010 runInTransaction:false
