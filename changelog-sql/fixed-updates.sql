@@ -38,14 +38,14 @@ CREATE TABLE moons_demo (
 drop table addresses;
 --rollback DROP TABLE IF EXISTS moons_demo;
 
---changeset ben.riley:004
+--changeset ben.riley:004AddIndex
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_moons_demo_planet_id ON moons_demo (planet_id);
 CREATE INDEX IF NOT EXISTS idx_planets_demo_name ON planets_demo (name);
 --rollback DROP INDEX IF EXISTS idx_moons_demo_planet_id;
 --rollback DROP INDEX IF EXISTS idx_planets_demo_name;
 
---changeset ben.riley:005
+--changeset ben.riley:005AlterTablePlanets
 -- Example ALTER TYPE tightening (works well in demos)
 ALTER TABLE planets_demo
     ALTER COLUMN name TYPE VARCHAR(50);
