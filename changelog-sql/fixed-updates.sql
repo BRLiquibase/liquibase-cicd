@@ -24,10 +24,6 @@ ALTER TABLE planets_demo
 --rollback ALTER TABLE planets_demo DROP COLUMN IF EXISTS first_observed;
 --rollback ALTER TABLE planets_demo DROP COLUMN IF EXISTS discovered_by;
 
--- [DB2] ALTER TABLE planets_demo ADD COLUMN discovered_by VARCHAR(255);
--- [DB2] ALTER TABLE planets_demo ADD COLUMN first_observed DATE;
--- [DB2] ALTER TABLE planets_demo ADD CONSTRAINT uq_planets_demo_name UNIQUE (name);
-
 --changeset james.bennett:003CreateMoonsTable
 -- Create related table with FK to planets_demo
 CREATE TABLE moons_demo (
