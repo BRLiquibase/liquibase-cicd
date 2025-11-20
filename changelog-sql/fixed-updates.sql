@@ -35,7 +35,6 @@ CREATE TABLE moons_demo (
       FOREIGN KEY (planet_id) REFERENCES planets_demo(id) ON DELETE CASCADE
 );
 
-drop table addresses;
 --rollback DROP TABLE IF EXISTS moons_demo;
 
 --changeset ben.riley:004AddIndex
