@@ -13,8 +13,6 @@ CREATE TABLE planets_demo (
 
 --rollback DROP TABLE IF EXISTS planets_demo;
 
-drop table planets_Demo;
-
 --changeset james.bennett:002AddColumns
 -- Add a few columns + a uniqueness rule
 ALTER TABLE planets_demo
