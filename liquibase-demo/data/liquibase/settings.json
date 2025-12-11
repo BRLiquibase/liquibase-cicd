@@ -1,0 +1,5 @@
+{
+  "liquibase.properties": {
+    "liquibase.properties": "/Users/benriley/Documents/GitHub/liquibase-cicd/liquibase-demo/changelogs/releases/v2.0/liquibase.properties"
+  }
+}

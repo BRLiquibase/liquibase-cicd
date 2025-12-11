@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Release 1.0 - Initial Application Schema -->
+    <include file="releases/v1.0/release-v1.0.xml" relativeToChangelogFile="true"/>
+    
+    <!-- Release 1.1 - Audit and Performance Enhancements -->
+    <include file="releases/v1.1/release-v1.1.xml" relativeToChangelogFile="true"/>
+    
+    <!-- Release 2.0 - Customer Portal and Data Migration -->
+    <include file="releases/v2.0/release-v2.0.xml" relativeToChangelogFile="true"/>
+    
+    <!-- Hotfixes -->
+    <include file="hotfix/hotfix-2026-01.xml" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>
