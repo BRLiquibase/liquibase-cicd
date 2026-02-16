@@ -1,5 +1,6 @@
 --liquibase formatted sql
---changeset james.bennett:001
+
+--changeset james.bennett:001-planets-create-table
 -- Initial table creation
 CREATE TABLE planets_demo (
     id         BIGSERIAL PRIMARY KEY,
