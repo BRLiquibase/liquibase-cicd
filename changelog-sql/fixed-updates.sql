@@ -34,7 +34,6 @@ CREATE TABLE moons_demo (
         ON DELETE CASCADE
 );
 
-drop table addresses;
 --rollback DROP TABLE IF EXISTS moons_demo;
 
 --changeset ben.riley:004
