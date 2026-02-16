@@ -2,7 +2,7 @@
 
 --changeset benriley:001-planets-create-table
 -- Initial table creation
-CREATE TABLE planets_demo1 (
+CREATE TABLE planets_demo (
     id         BIGSERIAL PRIMARY KEY,
     name       TEXT NOT NULL,  
     email      TEXT,
