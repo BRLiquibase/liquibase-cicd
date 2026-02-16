@@ -1,4 +1,4 @@
-name: Liquibase Simple Pipeline
+name: Liquibase Deployment Pipeline
 
 on:
   workflow_dispatch:
