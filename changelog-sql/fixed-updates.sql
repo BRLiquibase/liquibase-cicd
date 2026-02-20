@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset benriley:001-planets-create-table
+--changeset benriley:001-planets-create-table labels: v1.0 context: Dev,test
 -- Initial table creation
 CREATE TABLE planets_demo (
     id         BIGSERIAL PRIMARY KEY,
@@ -13,7 +13,7 @@ CREATE TABLE planets_demo (
 
 drop table planets_demo;
 
---changeset james.bennett:002
+--changeset james.bennett:002 labels: v1.0 context: Dev
 -- Add a few columns + a uniqueness rule
 ALTER TABLE planets_demo
     ADD COLUMN discovered_by TEXT,
@@ -22,7 +22,7 @@ ALTER TABLE planets_demo
 --rollback ALTER TABLE planets_demo DROP CONSTRAINT IF EXISTS uq_planets_demo_name;
 --rollback ALTER TABLE planets_demo DROP COLUMN IF EXISTS first_observed, DROP COLUMN IF EXISTS discovered_by;
 
---changeset james.bennett:003
+--changeset james.bennett:003 labels: v1.0 context: Dev
 -- Create related table with FK to planets_demo
 CREATE TABLE moons_demo (
     id         BIGSERIAL PRIMARY KEY,
@@ -37,16 +37,23 @@ CREATE TABLE moons_demo (
 
 --rollback DROP TABLE IF EXISTS moons_demo;
 
---changeset ben.riley:004
--- Helpful indexes
+--changeset ben.riley:004 labels: v1.0 context: Dev
 CREATE INDEX IF NOT EXISTS idx_moons_demo_planet_id ON moons_demo (planet_id);
 CREATE INDEX IF NOT EXISTS idx_planets_demo_name ON planets_demo (name);
 --rollback DROP INDEX IF EXISTS idx_moons_demo_planet_id;
 --rollback DROP INDEX IF EXISTS idx_planets_demo_name;
 
---changeset ben.riley:005
+--changeset ben.riley:005-alteringplanets labels: v1.1 context: Dev
 -- Example ALTER TYPE tightening (works well in demos)
 ALTER TABLE planets_demo
     ALTER COLUMN name TYPE VARCHAR(50);
 --rollback ALTER TABLE planets_demo
 --rollback     ALTER COLUMN name TYPE TEXT;
+
+
+--changeset ben.riley:006-alteringplanets labels: v1.1 context: Dev
+-- Example ALTER TYPE tightening (works well in demos)
+ALTER TABLE planets_demo
+    ALTER COLUMN email TYPE VARCHAR(255);
+--rollback ALTER TABLE planets_demo
+--rollback     ALTER COLUMN email TYPE TEXT;
