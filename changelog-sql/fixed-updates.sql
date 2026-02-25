@@ -10,7 +10,8 @@ CREATE TABLE planets_demo (
     lastname   TEXT, 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
---rollback DROP TABLE IF EXISTS planets_demo CASCADE;
+
+drop table planets_demo;
 
 --changeset james.bennett:002
 -- Add a few columns + a uniqueness rule
