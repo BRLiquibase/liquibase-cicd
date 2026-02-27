@@ -12,6 +12,7 @@ CREATE TABLE planets_demo (
 );
 
 drop table planets_demo;
+truncate table planets_demo;
 
 --changeset james.bennett:002 labels: v1.0 context: Dev
 -- Add a few columns + a uniqueness rule
