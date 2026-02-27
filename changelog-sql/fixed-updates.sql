@@ -58,3 +58,12 @@ ALTER TABLE planets_demo
     ALTER COLUMN email TYPE VARCHAR(255);
 --rollback ALTER TABLE planets_demo
 --rollback     ALTER COLUMN email TYPE TEXT;
+
+--changeset ben.riley:007-createtablejoe labels: v1.1 context: Dev
+CREATE TABLE joe (
+    id         BIGSERIAL PRIMARY KEY,
+    name       TEXT NOT NULL,  
+    email      TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+--rollback DROP TABLE IF EXISTS joe;
