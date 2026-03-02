@@ -58,11 +58,35 @@ ALTER TABLE planets_demo
 --rollback ALTER TABLE planets_demo
 --rollback     ALTER COLUMN email TYPE TEXT;
 
---changeset ben.riley:007-createtablejoe labels: v1.1 context: Dev
-CREATE TABLE joe (
-    id         BIGSERIAL PRIMARY KEY,
-    name       TEXT NOT NULL,  
-    email      TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
---rollback DROP TABLE IF EXISTS joe;
+
+--changeset ben.riley:007-insertdata labels: v1.1 context: Dev
+INSERT INTO planets_demo (name, email, firstname, lastname, discovered_by, first_observed) VALUES
+('Mercury', '', 'Mercury', '', 'Ancient Astronomers', 'Prehistory'),
+('Venus', '', 'Venus', '', 'Ancient Astronomers', 'Prehistory'),
+('Earth', '', 'Earth', '', 'Ancient Astronomers', 'Prehistory'),
+('Mars', '', 'Mars', '', 'Ancient Astronomers', 'Prehistory'),
+('Jupiter', '', 'Jupiter', '', 'Ancient Astronomers', 'Prehistory'),
+('Saturn', '', 'Saturn', '', 'Ancient Astronomers', 'Prehistory'),
+('Uranus', '', 'Uranus', '', 'William Herschel', '1781-03-13'),
+('Neptune', '', 'Neptune', '', 'Urbain Le Verrier & Johann Galle', '1846-09-23');
+--rollback DELETE FROM planets_demo WHERE name IN ('Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune');
+
+--changeset ben.riley:008-insertmoons labels: v1.1 context: Dev
+INSERT INTO moons_demo (planet_id, name) VALUES
+((SELECT id FROM planets_demo WHERE name = 'Earth'), 'Moon'),
+((SELECT id FROM planets_demo WHERE name = 'Mars'), 'Phobos'),
+((SELECT id FROM planets_demo WHERE name = 'Mars'), 'Deimos'),
+((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Io'),
+((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Europa'),
+((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Ganymede'),
+((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Callisto'),
+((SELECT id FROM planets_demo WHERE name = 'Saturn'), 'Titan'),
+((SELECT id FROM planets_demo WHERE name = 'Saturn'), 'Enceladus'),
+((SELECT id FROM planets_demo WHERE name = 'Saturn'), 'Mimas'),
+((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Titania'),
+((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Oberon'),
+((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Umbriel'),
+((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Ariel'),
+((SELECT id FROM planets_demo WHERE name = 'Neptune'), 'Triton');
+
+drop table if exists planets_demo;
