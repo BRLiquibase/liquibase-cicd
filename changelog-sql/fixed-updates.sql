@@ -13,7 +13,7 @@ CREATE TABLE planets_demo (
 
 --rollback DROP TABLE IF EXISTS planets_demo;
 
---changeset james.bennett:002 labels: v1.0 context: Dev
+--changeset james.bennett:002 labels: v1.1 context: Dev
 -- Add a few columns + a uniqueness rule
 ALTER TABLE planets_demo
     ADD COLUMN discovered_by TEXT,
@@ -58,35 +58,17 @@ ALTER TABLE planets_demo
 --rollback ALTER TABLE planets_demo
 --rollback     ALTER COLUMN email TYPE TEXT;
 
+--changeset briley:DML1
+INSERT INTO planets_demo (name, email, firstname, lastname)
+VALUES ('Earth', 'test@example.com', 'John', 'Doe');
+--rollback DELETE FROM planets_demo WHERE name = 'Earth';
 
---changeset ben.riley:007-insertdata labels: v1.1 context: Dev
-INSERT INTO planets_demo (name, email, firstname, lastname, discovered_by, first_observed) VALUES
-('Mercury', '', 'Mercury', '', 'Ancient Astronomers', 'Prehistory'),
-('Venus', '', 'Venus', '', 'Ancient Astronomers', 'Prehistory'),
-('Earth', '', 'Earth', '', 'Ancient Astronomers', 'Prehistory'),
-('Mars', '', 'Mars', '', 'Ancient Astronomers', 'Prehistory'),
-('Jupiter', '', 'Jupiter', '', 'Ancient Astronomers', 'Prehistory'),
-('Saturn', '', 'Saturn', '', 'Ancient Astronomers', 'Prehistory'),
-('Uranus', '', 'Uranus', '', 'William Herschel', '1781-03-13'),
-('Neptune', '', 'Neptune', '', 'Urbain Le Verrier & Johann Galle', '1846-09-23');
---rollback DELETE FROM planets_demo WHERE name IN ('Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune');
+--changeset briley:DML2
+UPDATE planets_demo
+SET email = 'newemail@example.com',
+    firstname = 'Jane'
+WHERE id = 1;
 
---changeset ben.riley:008-insertmoons labels: v1.1 context: Dev
-INSERT INTO moons_demo (planet_id, name) VALUES
-((SELECT id FROM planets_demo WHERE name = 'Earth'), 'Moon'),
-((SELECT id FROM planets_demo WHERE name = 'Mars'), 'Phobos'),
-((SELECT id FROM planets_demo WHERE name = 'Mars'), 'Deimos'),
-((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Io'),
-((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Europa'),
-((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Ganymede'),
-((SELECT id FROM planets_demo WHERE name = 'Jupiter'), 'Callisto'),
-((SELECT id FROM planets_demo WHERE name = 'Saturn'), 'Titan'),
-((SELECT id FROM planets_demo WHERE name = 'Saturn'), 'Enceladus'),
-((SELECT id FROM planets_demo WHERE name = 'Saturn'), 'Mimas'),
-((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Titania'),
-((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Oberon'),
-((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Umbriel'),
-((SELECT id FROM planets_demo WHERE name = 'Uranus'), 'Ariel'),
-((SELECT id FROM planets_demo WHERE name = 'Neptune'), 'Triton');
+--rollback UPDATE planets_demo SET email = 'test@example.com', firstname = 'John' where id = 1;
 
-drop table if exists planets_demo;
+drop fake table;
