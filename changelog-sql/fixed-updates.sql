@@ -11,7 +11,9 @@ CREATE TABLE planets_demo (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
---rollback DROP TABLE IF EXISTS planets_demo;
+drop planets_demo;
+
+
 
 --changeset james.bennett:002 labels: v1.1 context: Dev
 -- Add a few columns + a uniqueness rule
