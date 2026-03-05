@@ -11,7 +11,7 @@ CREATE TABLE planets_demo (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-drop planets_demo;
+--rollback DROP TABLE IF EXISTS planets_demo;
 
 
 
