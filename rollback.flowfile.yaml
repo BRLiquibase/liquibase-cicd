@@ -1,5 +1,5 @@
 globalVariables:
-  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/master.xml}"
+  CHANGELOG_FILE: "${CHANGELOG_FILE:-changelog-sql/main.root.xml}"
 
   LB_URL:       "${LB_URL:-}"
   LB_USER:      "${LB_USER:-}"
