@@ -47,7 +47,7 @@ jobs:
           echo "LB_USER=${{ secrets.LB_USER }}"            >> $GITHUB_ENV
           echo "LB_PASSWORD=${{ secrets.LB_PASSWORD }}"    >> $GITHUB_ENV
           echo "ROLLBACK_TAG=${{ inputs.rollback_tag }}"   >> $GITHUB_ENV
-          echo "CHANGELOG_FILE=changelog-sql/master.xml"   >> $GITHUB_ENV  # adjust if different
+          echo "CHANGELOG_FILE=changelog-sql/main.root.xml"   >> $GITHUB_ENV  # adjust if different
 
       - name: Run rollback flow
         shell: bash
